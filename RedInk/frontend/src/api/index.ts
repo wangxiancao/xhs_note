@@ -796,3 +796,50 @@ export async function generateContent(
   })
   return response.data
 }
+
+// ==================== 发布 API ====================
+
+export interface PublishStatusResponse {
+  success: boolean
+  is_logged_in?: boolean
+  username?: string
+  message?: string
+  error?: string
+}
+
+export interface PublishFromResultParams {
+  task_id: string
+  topic?: string
+  title?: string
+  content?: string
+  tags?: string[]
+  image_filenames?: string[]
+  image_urls?: string[]
+  schedule_at?: string
+  dry_run?: boolean
+}
+
+export interface PublishFromResultResponse {
+  success: boolean
+  message?: string
+  error?: string
+  dry_run?: boolean
+  publish_payload?: Record<string, any>
+  tool_result?: Record<string, any>
+  staged_host_paths?: string[]
+  staged_container_paths?: string[]
+}
+
+// 检查发布登录状态
+export async function checkPublishStatus(): Promise<PublishStatusResponse> {
+  const response = await axios.get<PublishStatusResponse>(`${API_BASE_URL}/publish/status`)
+  return response.data
+}
+
+// 从当前生成结果直接发布
+export async function publishFromResult(
+  data: PublishFromResultParams
+): Promise<PublishFromResultResponse> {
+  const response = await axios.post<PublishFromResultResponse>(`${API_BASE_URL}/publish/from-result`, data)
+  return response.data
+}
