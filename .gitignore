@@ -25,8 +25,18 @@ data/editor_sessions/
 data/plans/
 data/*.json
 data/*.md
+data/*.png
+data/archive_legacy/
 images/notes/
+images/publish/
+images/archive_legacy/
 scripts/generated_covers/
+
+# Local-only legacy tools and comparison artifacts
+/scripts/
+/skills/
+/frontend_current_phase4.html
+/frontend_redink_original.html
 
 # Runtime outputs (RedInk)
 RedInk/history/*
