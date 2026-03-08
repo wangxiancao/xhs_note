@@ -47,12 +47,26 @@
           </button>
         </div>
         <div class="titles-list">
-          <div v-for="(title, index) in content.titles" :key="index" class="title-item" @click="copyTitle(title, index)">
+          <div v-for="(_, index) in editableTitles" :key="index" class="title-item">
             <span class="title-badge">{{ index === 0 ? '推荐' : `备选${index}` }}</span>
-            <span class="title-text">{{ title }}</span>
-            <span class="copy-hint" :class="{ show: copiedTitleIndex === index }">
-              {{ copiedTitleIndex === index ? '已复制' : '点击复制' }}
-            </span>
+            <input
+              class="title-edit-input"
+              :value="editableTitles[index]"
+              @input="updateTitle(index, ($event.target as HTMLInputElement).value)"
+              placeholder="请输入标题"
+            />
+            <div class="title-actions">
+              <span
+                v-if="index === 0"
+                class="title-counter"
+                :class="{ warn: editableTitles[index].length > 20 }"
+              >
+                {{ editableTitles[index].length }}/20
+              </span>
+              <button class="copy-mini-btn" @click="copyTitle(index)">
+                {{ copiedTitleIndex === index ? '已复制' : '复制' }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -81,7 +95,13 @@
           </button>
         </div>
         <div class="copywriting-content">
-          <p v-for="(paragraph, index) in formattedCopywriting" :key="index">{{ paragraph }}</p>
+          <textarea
+            class="copywriting-edit-area"
+            :value="editableCopywriting"
+            @input="updateCopywriting(($event.target as HTMLTextAreaElement).value)"
+            placeholder="请输入正文内容"
+          />
+          <div class="copywriting-counter">{{ editableCopywriting.length }} 字</div>
         </div>
       </div>
 
@@ -134,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useGeneratorStore } from '../../stores/generator'
 import { generateContent } from '../../api'
 
@@ -146,14 +166,26 @@ const copiedCopywriting = ref(false)
 const copiedTags = ref(false)
 const copiedTitleIndex = ref<number | null>(null)
 const copiedTagIndex = ref<number | null>(null)
+const editableTitles = ref<string[]>([])
+const editableCopywriting = ref('')
 
 const content = computed(() => store.content)
 
-// 格式化文案（按换行分段）
-const formattedCopywriting = computed(() => {
-  if (!content.value.copywriting) return []
-  return content.value.copywriting.split('\n').filter(p => p.trim())
-})
+watch(
+  () => content.value.titles,
+  (titles) => {
+    editableTitles.value = Array.isArray(titles) ? [...titles] : []
+  },
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => content.value.copywriting,
+  (text) => {
+    editableCopywriting.value = text || ''
+  },
+  { immediate: true }
+)
 
 // 生成内容
 async function handleGenerate() {
@@ -203,7 +235,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 
 // 复制所有标题
 async function copyTitles() {
-  const text = content.value.titles.join('\n')
+  const text = editableTitles.value.join('\n')
   if (await copyToClipboard(text)) {
     copiedTitles.value = true
     setTimeout(() => copiedTitles.value = false, 2000)
@@ -211,7 +243,8 @@ async function copyTitles() {
 }
 
 // 复制单个标题
-async function copyTitle(title: string, index: number) {
+async function copyTitle(index: number) {
+  const title = editableTitles.value[index] || ''
   if (await copyToClipboard(title)) {
     copiedTitleIndex.value = index
     setTimeout(() => copiedTitleIndex.value = null, 2000)
@@ -220,10 +253,20 @@ async function copyTitle(title: string, index: number) {
 
 // 复制文案
 async function copyCopywriting() {
-  if (await copyToClipboard(content.value.copywriting)) {
+  if (await copyToClipboard(editableCopywriting.value)) {
     copiedCopywriting.value = true
     setTimeout(() => copiedCopywriting.value = false, 2000)
   }
+}
+
+function updateTitle(index: number, value: string) {
+  editableTitles.value[index] = value
+  store.updateContentTitle(index, value)
+}
+
+function updateCopywriting(value: string) {
+  editableCopywriting.value = value
+  store.updateContentCopywriting(value)
 }
 
 // 复制所有标签
@@ -403,13 +446,8 @@ async function copyTag(tag: string, index: number) {
   padding: 12px 16px;
   background: var(--bg-body);
   border-radius: var(--radius-md);
-  cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-}
-
-.title-item:hover {
-  background: var(--primary-light);
 }
 
 .title-badge {
@@ -426,42 +464,87 @@ async function copyTag(tag: string, index: number) {
   background: var(--text-sub);
 }
 
-.title-text {
+.title-edit-input {
   flex: 1;
-  font-size: 15px;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: white;
   color: var(--text-main);
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
-.copy-hint {
+.title-edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.12);
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.title-counter {
   font-size: 12px;
   color: var(--text-sub);
-  opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
-.title-item:hover .copy-hint {
-  opacity: 1;
+.title-counter.warn {
+  color: #FF4D4F;
+  font-weight: 600;
 }
 
-.copy-hint.show {
-  opacity: 1;
-  color: #13C2C2;
+.copy-mini-btn {
+  border: 1px solid var(--border-color);
+  background: white;
+  color: var(--text-sub);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.copy-mini-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* 文案内容 */
 .copywriting-content {
-  font-size: 15px;
-  line-height: 1.8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.copywriting-edit-area {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.7;
   color: var(--text-main);
+  background: white;
+  font-family: inherit;
 }
 
-.copywriting-content p {
-  margin: 0 0 12px;
+.copywriting-edit-area:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.12);
 }
 
-.copywriting-content p:last-child {
-  margin-bottom: 0;
+.copywriting-counter {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
 /* 标签列表 */

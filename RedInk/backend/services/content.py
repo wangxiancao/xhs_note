@@ -58,6 +58,15 @@ class ContentService:
                     'model': 'glm-4.7',
                     'temperature': 0.7,
                     'max_output_tokens': 8000,
+                },
+                'deepseek_chat': {
+                    'type': 'openai_compatible',
+                    'api_key': '',
+                    'base_url': 'https://api.deepseek.com',
+                    'endpoint_type': '/v1/chat/completions',
+                    'model': 'deepseek-chat',
+                    'temperature': 0.7,
+                    'max_output_tokens': 8000,
                 }
             }
         }
@@ -88,7 +97,6 @@ class ContentService:
         provider_config = providers.get(active_provider, {}).copy()
         api_key, api_key_source = resolve_api_key(
             configured_key=provider_config.get('api_key', ''),
-            preferred_env_names=[provider_config.get('api_key_env', '')],
         )
 
         if not api_key:
@@ -97,7 +105,7 @@ class ContentService:
                 f"文本服务商 {active_provider} 未配置 API Key。\n"
                 "解决方案：\n"
                 "1. 在系统设置页面填写 API Key\n"
-                "2. 或在 ~/.bashrc 中设置环境变量（如 export GLM_tokens=你的密钥）"
+                "2. 或在 text_providers.yaml 中配置 api_key"
             )
 
         provider_config['api_key'] = api_key

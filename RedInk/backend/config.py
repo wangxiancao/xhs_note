@@ -38,6 +38,34 @@ class Config:
                         'default_aspect_ratio': '3:4',
                         'watermark_enabled': True,
                         'high_concurrency': False,
+                    },
+                    'openai_image': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://api.openai.com',
+                        'endpoint_type': '/v1/images/generations',
+                        'model': 'gpt-image-1',
+                        'default_aspect_ratio': '1:1',
+                        'high_concurrency': False,
+                    },
+                    'siliconflow_flux': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://api.siliconflow.cn/v1',
+                        'endpoint_type': '/images/generations',
+                        'model': 'black-forest-labs/FLUX.1-schnell',
+                        'default_aspect_ratio': '3:4',
+                        'high_concurrency': False,
+                    },
+                    'jimeng_chat_api': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://ark.cn-beijing.volces.com/api/v3',
+                        'endpoint_type': '/chat/completions',
+                        'model': 'doubao-seedream-3-0-t2i-250415',
+                        'default_aspect_ratio': '3:4',
+                        'short_prompt': True,
+                        'high_concurrency': False,
                     }
                 },
             }
@@ -80,6 +108,15 @@ class Config:
                         'base_url': 'https://open.bigmodel.cn/api/paas',
                         'endpoint_type': '/v4/chat/completions',
                         'model': 'glm-4.7',
+                        'temperature': 0.7,
+                        'max_output_tokens': 8000,
+                    },
+                    'deepseek_chat': {
+                        'type': 'openai_compatible',
+                        'api_key': '',
+                        'base_url': 'https://api.deepseek.com',
+                        'endpoint_type': '/v1/chat/completions',
+                        'model': 'deepseek-chat',
                         'temperature': 0.7,
                         'max_output_tokens': 8000,
                     }
@@ -147,7 +184,6 @@ class Config:
         # 验证必要字段
         api_key, api_key_source = resolve_api_key(
             configured_key=provider_config.get('api_key', ''),
-            preferred_env_names=[provider_config.get('api_key_env', '')],
         )
         if not api_key:
             logger.error(f"图片服务商 [{provider_name}] 未配置 API Key")
@@ -155,8 +191,7 @@ class Config:
                 f"服务商 {provider_name} 未配置 API Key\n"
                 "解决方案：\n"
                 "1. 在系统设置页面编辑该服务商，填写 API Key\n"
-                "2. 或手动在 image_providers.yaml 中添加 api_key 字段\n"
-                "3. 或在 ~/.bashrc 中设置: export GLM_tokens=你的密钥"
+                "2. 或手动在 image_providers.yaml 中添加 api_key 字段"
             )
         provider_config['api_key'] = api_key
         provider_config['api_key_source'] = api_key_source

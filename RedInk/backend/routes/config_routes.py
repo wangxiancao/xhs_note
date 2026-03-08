@@ -12,7 +12,6 @@ from pathlib import Path
 import yaml
 from flask import Blueprint, request, jsonify
 from .utils import prepare_providers_for_response
-from backend.utils.secret_resolver import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,34 @@ def create_config_blueprint():
                         'model': 'glm-image',
                         'default_aspect_ratio': '3:4',
                         'high_concurrency': False,
+                    },
+                    'openai_image': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://api.openai.com',
+                        'endpoint_type': '/v1/images/generations',
+                        'model': 'gpt-image-1',
+                        'default_aspect_ratio': '1:1',
+                        'high_concurrency': False,
+                    },
+                    'siliconflow_flux': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://api.siliconflow.cn/v1',
+                        'endpoint_type': '/images/generations',
+                        'model': 'black-forest-labs/FLUX.1-schnell',
+                        'default_aspect_ratio': '3:4',
+                        'high_concurrency': False,
+                    },
+                    'jimeng_chat_api': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://ark.cn-beijing.volces.com/api/v3',
+                        'endpoint_type': '/chat/completions',
+                        'model': 'doubao-seedream-3-0-t2i-250415',
+                        'default_aspect_ratio': '3:4',
+                        'short_prompt': True,
+                        'high_concurrency': False,
                     }
                 },
             })
@@ -66,6 +93,15 @@ def create_config_blueprint():
                         'base_url': 'https://open.bigmodel.cn/api/paas',
                         'endpoint_type': '/v4/chat/completions',
                         'model': 'glm-4.7',
+                        'temperature': 0.7,
+                        'max_output_tokens': 8000,
+                    },
+                    'deepseek_chat': {
+                        'type': 'openai_compatible',
+                        'api_key': '',
+                        'base_url': 'https://api.deepseek.com',
+                        'endpoint_type': '/v1/chat/completions',
+                        'model': 'deepseek-chat',
                         'temperature': 0.7,
                         'max_output_tokens': 8000,
                     }
@@ -172,19 +208,13 @@ def create_config_blueprint():
                 'base_url': data.get('base_url'),
                 'model': data.get('model'),
                 'endpoint_type': data.get('endpoint_type'),
-                'api_key_env': data.get('api_key_env'),
             }
 
             # 如果没有提供 api_key，从配置文件读取
             if not config['api_key'] and provider_name:
                 config = _load_provider_config(provider_type, provider_name, config)
 
-            # 若页面未填 key，则尝试环境变量与 ~/.bashrc 回退
-            api_key, _ = resolve_api_key(
-                configured_key=config.get('api_key', ''),
-                preferred_env_names=[config.get('api_key_env', '')],
-            )
-            config['api_key'] = api_key
+            config['api_key'] = str(config.get('api_key') or '').strip()
 
             if not config['api_key']:
                 return jsonify({"success": False, "error": "API Key 未配置"}), 400
@@ -313,8 +343,6 @@ def _load_provider_config(provider_type: str, provider_name: str, config: dict) 
                     config['model'] = saved.get('model')
                 if not config.get('endpoint_type'):
                     config['endpoint_type'] = saved.get('endpoint_type')
-                if not config.get('api_key_env'):
-                    config['api_key_env'] = saved.get('api_key_env')
 
     return config
 

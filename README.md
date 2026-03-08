@@ -17,11 +17,11 @@
 
 ## 快速启动（本地部署）
 
-### 1. 启动 xiaohongshu-mcp
+### 1. 启动 xiaohongshu-mcp（外部独立服务）
 
-```bash
-docker compose up -d
-```
+仓库链接：<https://github.com/xpzouying/xiaohongshu-mcp>
+
+说明：`xiaohongshu-mcp` 不由本项目管理，请按其仓库文档单独部署并启动。
 
 检查登录状态：
 
@@ -50,8 +50,9 @@ npm run dev
 
 ## 部署后快速命令行启动
 
+前提：`xiaohongshu-mcp` 已在外部独立启动。
+
 ```bash
-docker compose up -d
 (cd RedInk && nohup /root/soft/anaconda3/envs/videolingo/bin/python -m backend.app >/tmp/redink-backend.log 2>&1 &)
 (cd RedInk/frontend && nohup npm run dev -- --host 0.0.0.0 --port 5173 >/tmp/redink-frontend.log 2>&1 &)
 ```

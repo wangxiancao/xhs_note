@@ -9,7 +9,7 @@ providers:
   # GLM-Image（默认推荐）
   glm_image:
     type: image_api
-    api_key: sk-xxxxxxxxxxxxxxxxxxxx # 也可留空，运行时从 .claude/CLAUDE.md 或环境变量读取
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
     base_url: https://open.bigmodel.cn/api/paas
     endpoint_type: /v4/images/generations
     model: glm-image
@@ -28,4 +28,23 @@ providers:
     base_url: https://api.openai.com
     endpoint_type: /v1/images/generations
     model: dall-e-3
+    high_concurrency: false
+
+  # DeepSeek 生态常配（硅基流动 FLUX，可选）
+  siliconflow_flux:
+    type: image_api
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api.siliconflow.cn/v1
+    endpoint_type: /images/generations
+    model: black-forest-labs/FLUX.1-schnell
+    high_concurrency: false
+
+  # 即梦/豆包类接口（可选，需按服务商文档调整 model 与 endpoint）
+  jimeng_chat_api:
+    type: image_api
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    endpoint_type: /chat/completions
+    model: doubao-seedream-3-0-t2i-250415
+    short_prompt: true
     high_concurrency: false

@@ -463,6 +463,32 @@ export const useGeneratorStore = defineStore('generator', {
     },
 
     /**
+     * 更新指定标题（用于结果页手动编辑）
+     * @param index 标题索引
+     * @param title 新标题
+     */
+    updateContentTitle(index: number, title: string) {
+      if (index < 0) return
+      if (!Array.isArray(this.content.titles)) {
+        this.content.titles = []
+      }
+      if (this.content.titles.length <= index) {
+        while (this.content.titles.length <= index) {
+          this.content.titles.push('')
+        }
+      }
+      this.content.titles[index] = title
+    },
+
+    /**
+     * 更新正文（用于结果页手动编辑）
+     * @param copywriting 新正文
+     */
+    updateContentCopywriting(copywriting: string) {
+      this.content.copywriting = copywriting
+    },
+
+    /**
      * 设置内容生成失败的错误信息
      * @param error 错误描述
      */

@@ -58,13 +58,13 @@ export interface ImageProviderForm {
 // 文本服务商类型选项
 export const textTypeOptions = [
   { value: 'google_gemini', label: 'Google Gemini' },
-  { value: 'openai_compatible', label: 'OpenAI 兼容接口' }
+  { value: 'openai_compatible', label: 'OpenAI 兼容接口（GLM / DeepSeek / OpenAI）' }
 ]
 
 // 图片服务商类型选项
 export const imageTypeOptions = [
   { value: 'google_genai', label: 'Google GenAI' },
-  { value: 'image_api', label: 'GLM/OpenAI 兼容接口' }
+  { value: 'image_api', label: '图片 API（GLM / DALL·E / FLUX / 即梦）' }
 ]
 
 /**
@@ -107,8 +107,8 @@ export function useProviderForm() {
       type: 'openai_compatible',
       api_key: '',
       api_key_masked: '',
-      base_url: '',
-      model: '',
+      base_url: 'https://open.bigmodel.cn/api/paas',
+      model: 'glm-4.7',
       endpoint_type: '/v4/chat/completions',
       _has_api_key: false
     }
@@ -123,8 +123,8 @@ export function useProviderForm() {
       type: 'image_api',
       api_key: '',
       api_key_masked: '',
-      base_url: '',
-      model: '',
+      base_url: 'https://open.bigmodel.cn/api/paas',
+      model: 'glm-image',
       high_concurrency: false,
       short_prompt: false,
       endpoint_type: '/v4/images/generations',

@@ -9,10 +9,20 @@ providers:
   # GLM-4.7（默认推荐）
   glm_47:
     type: openai_compatible
-    api_key: sk-xxxxxxxxxxxxxxxxxxxx # 也可留空，运行时从 .claude/CLAUDE.md 或环境变量读取
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
     base_url: https://open.bigmodel.cn/api/paas
     endpoint_type: /v4/chat/completions
     model: glm-4.7
+    temperature: 0.7
+    max_output_tokens: 8000
+
+  # DeepSeek Chat（可选）
+  deepseek_chat:
+    type: openai_compatible
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx
+    base_url: https://api.deepseek.com
+    endpoint_type: /v1/chat/completions
+    model: deepseek-chat
     temperature: 0.7
     max_output_tokens: 8000
 

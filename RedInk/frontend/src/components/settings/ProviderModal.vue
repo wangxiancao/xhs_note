@@ -198,7 +198,7 @@ const modelPlaceholder = computed(() => {
     case 'image_api':
       return '例如: flux-pro'
     default:
-      return '例如: gpt-4o'
+      return '例如: glm-4.7 / deepseek-chat / gpt-4o'
   }
 })
 

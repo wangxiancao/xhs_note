@@ -88,7 +88,7 @@
             placeholder="例如: /v1/images/generations 或 /v1/chat/completions"
           />
           <span class="form-hint">
-            常用端点：/v1/images/generations（标准图片生成）、/v1/chat/completions（即梦等返回链接的 API）
+            常用端点：/v4/images/generations（GLM-Image）、/v1/images/generations（OpenAI/Flux）、/chat/completions（即梦等返回链接的 API）
           </span>
         </div>
 
@@ -219,7 +219,7 @@ const modelPlaceholder = computed(() => {
     case 'google_genai':
       return '例如: imagen-3.0-generate-002'
     case 'image_api':
-      return '例如: flux-pro'
+      return '例如: glm-image / gpt-image-1 / black-forest-labs/FLUX.1-schnell'
     default:
       return '例如: gpt-4o'
   }

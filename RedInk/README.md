@@ -66,4 +66,4 @@ npm run dev
 - 文本：`glm-4.7`
 - 图片：`glm-image`
 
-API Key 可通过设置页配置，或通过环境变量/`~/.bashrc` 回退读取（如 `export GLM_tokens=你的密钥`）。
+API Key 仅通过系统设置页或配置文件（`text_providers.yaml` / `image_providers.yaml`）配置。
