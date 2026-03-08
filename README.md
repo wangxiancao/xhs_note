@@ -48,6 +48,21 @@ npm run dev
 
 默认端口：`http://127.0.0.1:5173`
 
+## 部署后快速命令行启动
+
+```bash
+docker compose up -d
+(cd RedInk && nohup /root/soft/anaconda3/envs/videolingo/bin/python -m backend.app >/tmp/redink-backend.log 2>&1 &)
+(cd RedInk/frontend && nohup npm run dev -- --host 0.0.0.0 --port 5173 >/tmp/redink-frontend.log 2>&1 &)
+```
+
+快速检查：
+
+```bash
+curl http://127.0.0.1:12398/health
+curl http://127.0.0.1:18060/api/v1/login/status
+```
+
 ## 主流程使用
 
 1. 打开首页输入主题。
@@ -76,6 +91,4 @@ npm run dev
 
 ## 文档
 
-- 流程文档：`WORKFLOW.md`
-- 改造清单：`REDINK_MIGRATION_CHECKLIST.md`
 - RedInk 子项目说明：`RedInk/README.md`

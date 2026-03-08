@@ -37,6 +37,8 @@ scripts/generated_covers/
 /skills/
 /frontend_current_phase4.html
 /frontend_redink_original.html
+/WORKFLOW.md
+/REDINK_MIGRATION_CHECKLIST.md
 
 # Runtime outputs (RedInk)
 RedInk/history/*
