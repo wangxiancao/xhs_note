@@ -1,0 +1,43 @@
+# Secrets / local config
+.claude/
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+RedInk/frontend/node_modules/
+
+# Runtime outputs (xhs_note)
+data/reports/
+data/compliance/
+data/editor_sessions/
+data/plans/
+data/*.json
+data/*.md
+images/notes/
+scripts/generated_covers/
+
+# Runtime outputs (RedInk)
+RedInk/history/*
+!RedInk/history/.gitkeep
+RedInk/output/
+RedInk/text_providers.yaml
+RedInk/image_providers.yaml
+
+# Build / logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

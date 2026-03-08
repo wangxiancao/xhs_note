@@ -1,0 +1,52 @@
+% 博朗经典风格
+% 温暖米色背景配橙色点缀，适合知识分享类内容
+
+\documentclass[preview,border=0pt]{standalone}
+\usepackage{ctex}
+\usepackage{tikz}
+\usepackage{graphicx}
+
+% 配色定义
+\definecolor{background}{HTML}{F5F0E8}  % 温暖米色
+\definecolor{primary}{HTML}{2D2D2D}     % 深灰
+\definecolor{secondary}{HTML}{FF6B35}   % 橙色
+\definecolor{accent}{HTML}{FFB800}      % 金色
+
+% 尺寸 (1080x1440 px at 100 dpi = 10.8x14.4 cm)
+\newlength{\coverwidth}
+\newlength{\coverheight}
+\setlength{\coverwidth}{10.8cm}
+\setlength{\coverheight}{14.4cm}
+
+\begin{document}
+\begin{tikzpicture}
+  % 背景
+  \fill[background] (0,0) rectangle (\coverwidth,\coverheight);
+
+  % 顶部装饰条
+  \fill[secondary, rounded corners=2pt] (1cm,13.6cm) rectangle (9.8cm,13.75cm);
+
+  % 主标题
+  \node[font=\fontsize{48pt}{56pt}\selectfont\bfseries,
+        text=primary,
+        align=center,
+        text width=9cm]
+    at (5.4cm,10cm) {主标题};
+
+  % 副标题 (带高亮背景)
+  \node[font=\fontsize{32pt}{40pt}\selectfont,
+        text=primary,
+        fill=accent,
+        rounded corners=8pt,
+        inner sep=12pt]
+    at (5.4cm,8cm) {副标题};
+
+  % 装饰文字
+  \node[font=\fontsize{18pt}{24pt}\selectfont,
+        text=secondary]
+    at (5.4cm,5cm) {附加信息};
+
+  % 底部装饰条
+  \fill[secondary, rounded corners=2pt] (1cm,1.3cm) rectangle (9.8cm,1.45cm);
+\end{tikzpicture}
+\end{document}

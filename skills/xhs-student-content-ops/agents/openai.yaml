@@ -1,0 +1,4 @@
+interface:
+  display_name: "XHS Student Content Ops"
+  short_description: "Local trend-to-publish workflow for student Xiaohongshu notes"
+  default_prompt: "Use $xhs-student-content-ops to run local trend analysis, generate AI direct LaTeX templates with TeX compile guard, read API key from .claude/CLAUDE.md, and output PNG manifests to data/images paths."
