@@ -19,6 +19,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'glm-image')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '')
+        # GLM-Image 去水印开关：None=不传（走平台默认），True/False=显式控制
+        self.watermark_enabled = config.get('watermark_enabled', None)
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v4/images/generations')
@@ -142,6 +144,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         }
         if self._is_glm_image_request(model):
             payload["size"] = self._resolve_glm_size(aspect_ratio)
+            if self.watermark_enabled is not None:
+                payload["watermark_enabled"] = bool(self.watermark_enabled)
         else:
             payload["response_format"] = "b64_json"
             payload["aspect_ratio"] = aspect_ratio

@@ -36,6 +36,7 @@ class Config:
                         'endpoint_type': '/v4/images/generations',
                         'model': 'glm-image',
                         'default_aspect_ratio': '3:4',
+                        'watermark_enabled': True,
                         'high_concurrency': False,
                     }
                 },
