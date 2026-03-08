@@ -14,7 +14,7 @@
           让传播不再需要门槛，让创作从未如此简单
         </div>
         <h1 class="page-title">灵感一触即发</h1>
-        <p class="page-subtitle">输入你的创意主题，让 AI 帮你生成爆款标题、正文和封面图</p>
+        <p class="page-subtitle">输入主题后，依次完成大纲、图片、文案生成并一键发布到小红书</p>
       </div>
 
       <!-- 主题输入组合框 -->
@@ -29,14 +29,11 @@
 
     <!-- 版权信息 -->
     <div class="page-footer">
-      <div class="footer-tip">
-        配置不成功？访问 <a href="https://redink.top" target="_blank" rel="noopener noreferrer">redink.top</a> 官方站点即刻体验
-      </div>
       <div class="footer-copyright">
-        © 2025 <a href="https://github.com/HisMax/RedInk" target="_blank" rel="noopener noreferrer">RedInk</a> by 默子 (Histone)
+        © 2026 xhs_note · RedInk 本地部署版
       </div>
       <div class="footer-license">
-        Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>
+        主题 → 大纲 → 图片 → 发布
       </div>
     </div>
 
