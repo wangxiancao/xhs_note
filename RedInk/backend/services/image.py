@@ -1,14 +1,24 @@
 """图片生成服务"""
 import logging
+import io
 import os
+import re
+import subprocess
+import tempfile
 import uuid
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Generator, List, Optional, Tuple
+from pathlib import Path
+
+from PIL import Image, ImageOps
+
 from backend.config import Config
 from backend.generators.factory import ImageGeneratorFactory
 from backend.utils.image_compressor import compress_image
+from backend.utils.secret_resolver import resolve_api_key
+from backend.utils.text_client import get_text_chat_client
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +29,11 @@ class ImageService:
     # 并发配置
     MAX_CONCURRENT = 15  # 最大并发数
     AUTO_RETRY_COUNT = 1  # 不自动重试，超时后让用户手动重试
+    TARGET_IMAGE_SIZE = (1242, 1660)  # 小红书封面/图文目标尺寸
+    COVER_TEX_MAX_RETRY = 3
+    COVER_TEX_COMPILE_TIMEOUT = 45
+    XELATEX_PATH = "/usr/local/texlive/2024/bin/x86_64-linux/xelatex"
+    PDFTOPPM_PATH = "/usr/bin/pdftoppm"
 
     def __init__(self, provider_name: str = None):
         """
@@ -51,6 +66,8 @@ class ImageService:
         # 加载提示词模板
         self.prompt_template = self._load_prompt_template()
         self.prompt_template_short = self._load_prompt_template(short=True)
+        self.cover_latex_prompt_template = self._load_cover_prompt_template()
+        self.cover_text_client, self.cover_text_model = self._build_cover_text_client()
 
         # 历史记录根目录
         self.history_root_dir = os.path.join(
@@ -81,6 +98,203 @@ class ImageService:
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
 
+    def _load_cover_prompt_template(self) -> str:
+        """加载封面 LaTeX 生成提示词模板"""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "prompts",
+            "cover_latex_prompt.txt"
+        )
+        if not os.path.exists(prompt_path):
+            return (
+                "请基于以下内容生成可直接编译的 xelatex + ctex 封面 TeX 模板。\n"
+                "仅输出 TeX 代码，不要解释。\n\n"
+                "页面内容:\n{page_content}\n\n"
+                "用户主题:\n{user_topic}\n\n"
+                "完整大纲:\n{full_outline}\n\n"
+                "第 {attempt} 次生成。\n"
+                "上一次编译错误:\n{compile_feedback}\n\n"
+                "上一次 TeX:\n{previous_tex}\n"
+            )
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _build_cover_text_client(self):
+        """构建用于封面 LaTeX 生成的文本客户端"""
+        text_config = Config.load_text_providers_config()
+        active_provider = text_config.get("active_provider", "glm_47")
+        providers = text_config.get("providers", {})
+        provider_config = providers.get(active_provider, {}).copy()
+
+        api_key, _ = resolve_api_key(configured_key=provider_config.get("api_key", ""))
+        if not api_key:
+            raise ValueError(
+                "封面 TeX 生成需要文本 API Key。\n"
+                "请在系统设置中为当前文本服务商配置 API Key。"
+            )
+        provider_config["api_key"] = api_key
+        model = provider_config.get("model", "glm-4.7")
+        client = get_text_chat_client(provider_config)
+        return client, model
+
+    def _extract_tex_block(self, response_text: str) -> str:
+        """从模型响应中提取 TeX 代码"""
+        if not response_text:
+            return ""
+        fenced_patterns = [
+            r"```(?:tex|latex)\s*([\s\S]*?)```",
+            r"```([\s\S]*?)```",
+        ]
+        for pattern in fenced_patterns:
+            match = re.search(pattern, response_text, flags=re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        return response_text.strip()
+
+    def _normalize_to_target_size(self, image_data: bytes) -> bytes:
+        """统一图片尺寸到 1242x1660"""
+        with Image.open(io.BytesIO(image_data)) as img:
+            if img.mode in ("RGBA", "LA"):
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[-1])
+                img = bg
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+
+            fitted = ImageOps.fit(
+                img,
+                self.TARGET_IMAGE_SIZE,
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+            output = io.BytesIO()
+            fitted.save(output, format="PNG", optimize=True)
+            return output.getvalue()
+
+    def _parse_latex_compile_error(self, work_dir: Path, fallback: str) -> str:
+        """提取 LaTeX 编译错误信息"""
+        log_path = work_dir / "cover.log"
+        if log_path.exists():
+            log_content = log_path.read_text(encoding="utf-8", errors="ignore")
+            error_match = re.search(r"^! (.+)$", log_content, flags=re.MULTILINE)
+            line_match = re.search(r"^l\.(\d+)", log_content, flags=re.MULTILINE)
+            if error_match:
+                err = error_match.group(1).strip()
+                if line_match:
+                    err += f" (line {line_match.group(1)})"
+                return err
+        fallback = (fallback or "").strip()
+        if fallback:
+            return fallback[-600:]
+        return "Unknown TeX compile error"
+
+    def _compile_cover_tex_to_png(self, tex_code: str) -> Tuple[bool, Optional[bytes], str]:
+        """编译封面 TeX 并转换为 PNG"""
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                work_dir = Path(temp_dir)
+                tex_file = work_dir / "cover.tex"
+                pdf_file = work_dir / "cover.pdf"
+                ppm_prefix = work_dir / "cover"
+                ppm_png = work_dir / "cover.png"
+
+                tex_file.write_text(tex_code, encoding="utf-8")
+
+                env = os.environ.copy()
+                env["PATH"] = f"{os.path.dirname(self.XELATEX_PATH)}:{env.get('PATH', '')}"
+
+                compile_proc = subprocess.run(
+                    [
+                        self.XELATEX_PATH,
+                        "-interaction=nonstopmode",
+                        "-halt-on-error",
+                        "-output-directory",
+                        str(work_dir),
+                        str(tex_file),
+                    ],
+                    cwd=str(work_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=self.COVER_TEX_COMPILE_TIMEOUT,
+                    env=env,
+                )
+                compile_stdout = (compile_proc.stdout or "") + "\n" + (compile_proc.stderr or "")
+
+                if compile_proc.returncode != 0 or not pdf_file.exists():
+                    error = self._parse_latex_compile_error(work_dir, compile_stdout)
+                    return False, None, error
+
+                convert_proc = subprocess.run(
+                    [
+                        self.PDFTOPPM_PATH,
+                        "-singlefile",
+                        "-png",
+                        "-r",
+                        "300",
+                        str(pdf_file),
+                        str(ppm_prefix),
+                    ],
+                    cwd=str(work_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if convert_proc.returncode != 0 or not ppm_png.exists():
+                    convert_error = (convert_proc.stderr or convert_proc.stdout or "").strip()
+                    return False, None, f"PDF 转 PNG 失败: {convert_error[:300]}"
+
+                normalized_png = self._normalize_to_target_size(ppm_png.read_bytes())
+                return True, normalized_png, ""
+
+        except subprocess.TimeoutExpired:
+            return False, None, "TeX 编译超时"
+        except Exception as e:
+            return False, None, f"TeX 编译异常: {str(e)}"
+
+    def _generate_cover_via_latex(
+        self,
+        page_content: str,
+        full_outline: str,
+        user_topic: str,
+    ) -> bytes:
+        """通过文本模型生成封面 TeX，编译失败时自动重试修复"""
+        compile_feedback = "无"
+        previous_tex = "无"
+
+        for attempt in range(1, self.COVER_TEX_MAX_RETRY + 1):
+            prompt = self.cover_latex_prompt_template.format(
+                page_content=page_content,
+                full_outline=full_outline or "未提供",
+                user_topic=user_topic or "未提供",
+                attempt=attempt,
+                compile_feedback=compile_feedback,
+                previous_tex=previous_tex,
+            )
+
+            response_text = self.cover_text_client.generate_text(
+                prompt=prompt,
+                model=self.cover_text_model,
+                temperature=0.35,
+                max_output_tokens=4096,
+            )
+            tex_code = self._extract_tex_block(response_text)
+            if not tex_code:
+                compile_feedback = "模型未返回 TeX 代码。"
+                previous_tex = "无"
+                continue
+
+            ok, png_bytes, compile_error = self._compile_cover_tex_to_png(tex_code)
+            if ok and png_bytes:
+                return png_bytes
+
+            compile_feedback = compile_error or "未知错误"
+            previous_tex = tex_code[:8000]
+            logger.warning(
+                f"封面 TeX 编译失败 (attempt={attempt}/{self.COVER_TEX_MAX_RETRY}): {compile_feedback}"
+            )
+
+        raise RuntimeError(f"封面 TeX 连续编译失败：{compile_feedback}")
+
     def _save_image(self, image_data: bytes, filename: str, task_dir: str = None) -> str:
         """
         保存图片到本地，同时生成缩略图
@@ -98,6 +312,9 @@ class ImageService:
 
         if task_dir is None:
             raise ValueError("任务目录未设置")
+
+        # 统一主图尺寸到 1242x1660
+        image_data = self._normalize_to_target_size(image_data)
 
         # 保存原图
         filepath = os.path.join(task_dir, filename)
@@ -144,6 +361,19 @@ class ImageService:
 
         try:
             logger.debug(f"生成图片 [{index}]: type={page_type}")
+
+            # 封面专用链路：文本模型生成 TeX -> 本地编译 PNG
+            if page_type == "cover":
+                logger.info(f"封面页 [{index}] 使用 LaTeX 渲染链路")
+                cover_png = self._generate_cover_via_latex(
+                    page_content=page_content,
+                    full_outline=full_outline,
+                    user_topic=user_topic,
+                )
+                filename = f"{index}.png"
+                self._save_image(cover_png, filename, self.current_task_dir)
+                logger.info(f"✅ 封面 [{index}] LaTeX 渲染成功: {filename}")
+                return (index, True, filename, None)
 
             # 根据配置选择模板（短 prompt 或完整 prompt）
             if self.use_short_prompt and self.prompt_template_short:

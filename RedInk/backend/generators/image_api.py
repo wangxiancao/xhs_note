@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 class ImageApiGenerator(ImageGeneratorBase):
     """Image API 生成器"""
+    GLM_PREFERRED_SIZE = "1242x1660"
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -121,6 +122,25 @@ class ImageApiGenerator(ImageGeneratorBase):
 
         if isinstance(self.image_size, str) and "x" in self.image_size:
             return self.image_size
+        # 默认优先直传 1242x1660，满足小红书主链路目标尺寸
+        if str(aspect_ratio or "").strip() == "3:4":
+            return self.GLM_PREFERRED_SIZE
+        normalized_ratio = str(aspect_ratio or "").strip()
+        return mapping.get(normalized_ratio, "1024x1024")
+
+    def _resolve_glm_fallback_size(self, aspect_ratio: str) -> str:
+        """当优先尺寸被接口拒绝时，回退到兼容尺寸"""
+        mapping = {
+            "1:1": "1024x1024",
+            "3:4": "768x1024",
+            "4:3": "1024x768",
+            "9:16": "720x1280",
+            "16:9": "1280x720",
+            "2:3": "768x1152",
+            "3:2": "1152x768",
+            "4:5": "864x1080",
+            "5:4": "1080x864",
+        }
         normalized_ratio = str(aspect_ratio or "").strip()
         return mapping.get(normalized_ratio, "1024x1024")
 
@@ -142,7 +162,8 @@ class ImageApiGenerator(ImageGeneratorBase):
             "model": model,
             "prompt": prompt,
         }
-        if self._is_glm_image_request(model):
+        is_glm_request = self._is_glm_image_request(model)
+        if is_glm_request:
             payload["size"] = self._resolve_glm_size(aspect_ratio)
             if self.watermark_enabled is not None:
                 payload["watermark_enabled"] = bool(self.watermark_enabled)
@@ -187,6 +208,19 @@ class ImageApiGenerator(ImageGeneratorBase):
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.debug(f"  发送请求到: {api_url}")
         response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+
+        if (
+            is_glm_request
+            and response.status_code == 400
+            and payload.get("size") == self.GLM_PREFERRED_SIZE
+            and not (isinstance(self.image_size, str) and "x" in self.image_size)
+        ):
+            fallback_size = self._resolve_glm_fallback_size(aspect_ratio)
+            logger.warning(
+                f"GLM-Image 不接受 size={self.GLM_PREFERRED_SIZE}，自动回退到 {fallback_size}"
+            )
+            payload["size"] = fallback_size
+            response = requests.post(api_url, headers=headers, json=payload, timeout=300)
 
         if response.status_code != 200:
             error_detail = response.text[:500]

@@ -36,7 +36,7 @@
         </button>
       </div>
       <div class="upload-hint">
-        这些图片将用于生成封面和内容参考
+        这些图片将用于内容页风格参考（封面由 LaTeX 模板渲染）
       </div>
     </div>
 
