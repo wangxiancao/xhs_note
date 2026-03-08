@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Generator, List, Optional, Tuple
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageStat
 
 from backend.config import Config
 from backend.generators.factory import ImageGeneratorFactory
@@ -188,6 +188,19 @@ class ImageService:
             return fallback[-600:]
         return "Unknown TeX compile error"
 
+    def _is_image_visually_blank(self, image_data: bytes) -> bool:
+        """检测渲染结果是否近似空白图"""
+        try:
+            with Image.open(io.BytesIO(image_data)).convert("L") as gray_img:
+                min_px, max_px = gray_img.getextrema()
+                contrast = int(max_px) - int(min_px)
+                stddev = float(ImageStat.Stat(gray_img).stddev[0])
+                # 低对比度 + 低方差，通常是纯色或近似纯色空白图
+                return contrast <= 4 and stddev < 1.5
+        except Exception:
+            # 无法判断时不拦截，交给后续链路处理
+            return False
+
     def _compile_cover_tex_to_png(self, tex_code: str) -> Tuple[bool, Optional[bytes], str]:
         """编译封面 TeX 并转换为 PNG"""
         try:
@@ -276,6 +289,7 @@ class ImageService:
                 model=self.cover_text_model,
                 temperature=0.35,
                 max_output_tokens=4096,
+                thinking={"type": "disabled"} if str(self.cover_text_model).lower().startswith("glm") else None,
             )
             tex_code = self._extract_tex_block(response_text)
             if not tex_code:
@@ -285,6 +299,13 @@ class ImageService:
 
             ok, png_bytes, compile_error = self._compile_cover_tex_to_png(tex_code)
             if ok and png_bytes:
+                if self._is_image_visually_blank(png_bytes):
+                    compile_feedback = "封面渲染结果为空白或近似空白，请补充可见背景与文字，并提高前景对比度。"
+                    previous_tex = tex_code[:8000]
+                    logger.warning(
+                        f"封面 TeX 渲染为空白图 (attempt={attempt}/{self.COVER_TEX_MAX_RETRY})"
+                    )
+                    continue
                 return png_bytes
 
             compile_feedback = compile_error or "未知错误"

@@ -147,6 +147,10 @@ class TextChatClient:
             "max_tokens": max_output_tokens,
             "stream": False
         }
+        # 透传额外参数（如 glm 的 thinking 配置）
+        for key, value in kwargs.items():
+            if value is not None:
+                payload[key] = value
 
         headers = {
             "Content-Type": "application/json",
