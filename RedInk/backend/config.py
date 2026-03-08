@@ -156,7 +156,7 @@ class Config:
                 "解决方案：\n"
                 "1. 在系统设置页面编辑该服务商，填写 API Key\n"
                 "2. 或手动在 image_providers.yaml 中添加 api_key 字段\n"
-                "3. 或设置环境变量 / .claude/CLAUDE.md 中的 GLM_API_KEY"
+                "3. 或在 ~/.bashrc 中设置: export GLM_tokens=你的密钥"
             )
         provider_config['api_key'] = api_key
         provider_config['api_key_source'] = api_key_source

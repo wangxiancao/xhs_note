@@ -179,7 +179,7 @@ def create_config_blueprint():
             if not config['api_key'] and provider_name:
                 config = _load_provider_config(provider_type, provider_name, config)
 
-            # 若页面未填 key，则尝试环境变量与 .claude/CLAUDE.md 回退
+            # 若页面未填 key，则尝试环境变量与 ~/.bashrc 回退
             api_key, _ = resolve_api_key(
                 configured_key=config.get('api_key', ''),
                 preferred_env_names=[config.get('api_key_env', '')],

@@ -66,4 +66,4 @@ npm run dev
 - 文本：`glm-4.7`
 - 图片：`glm-image`
 
-API Key 可通过设置页配置，或通过环境变量/`.claude/CLAUDE.md` 回退读取。
+API Key 可通过设置页配置，或通过环境变量/`~/.bashrc` 回退读取（如 `export GLM_tokens=你的密钥`）。

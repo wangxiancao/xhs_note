@@ -1,4 +1,4 @@
-"""Resolve API keys from provider config, env vars, or .claude/CLAUDE.md."""
+"""Resolve API keys from provider config, env vars, or ~/.bashrc."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from typing import Iterable, Optional, Tuple
 
 
 DEFAULT_ENV_NAMES = [
+    "GLM_tokens",
     "GLM_API_KEY",
     "ZHIPUAI_API_KEY",
     "OPENAI_API_KEY",
-    "GLM_tokens",
 ]
 
 
@@ -23,18 +23,17 @@ def _normalize_secret_value(raw: object) -> str:
     return value
 
 
-def _candidate_paths(project_root: Optional[Path] = None) -> list[Path]:
-    roots: list[Path] = []
-    if project_root is not None:
-        roots.append(project_root)
-    roots.append(Path(__file__).resolve().parents[2])  # .../RedInk
-    roots.append(Path(__file__).resolve().parents[3])  # .../xhs_note
+def _candidate_bashrc_paths() -> list[Path]:
+    candidates: list[Path] = []
+    # Primary source: current user's shell profile.
+    candidates.append(Path.home() / ".bashrc")
+    # Deduplicate while preserving order.
     dedup: list[Path] = []
-    for root in roots:
-        resolved = root.resolve()
+    for path in candidates:
+        resolved = path.expanduser().resolve() if path.exists() else path.expanduser()
         if resolved not in dedup:
             dedup.append(resolved)
-    return [root / ".claude" / "CLAUDE.md" for root in dedup]
+    return dedup
 
 
 def _iter_env_names(preferred_env_names: Optional[Iterable[str]] = None) -> list[str]:
@@ -49,28 +48,27 @@ def _iter_env_names(preferred_env_names: Optional[Iterable[str]] = None) -> list
     return env_names
 
 
-def _load_api_key_from_claude_md(
+def _load_api_key_from_bashrc(
     env_names: list[str],
-    project_root: Optional[Path] = None,
 ) -> Tuple[str, str]:
     if not env_names:
         return "", ""
 
     name_pattern = "|".join(re.escape(name) for name in env_names)
     pattern = re.compile(
-        rf"^\s*(?:export\s+)?(?P<name>{name_pattern})\s*[:=]\s*(?P<value>.+?)\s*$"
+        rf"^\s*(?:export\s+)?(?P<name>{name_pattern})\s*=\s*(?P<value>.*?)\s*(?:#.*)?$"
     )
 
-    for claude_md in _candidate_paths(project_root):
-        if not claude_md.exists():
+    for bashrc in _candidate_bashrc_paths():
+        if not bashrc.exists():
             continue
-        for line in claude_md.read_text(encoding="utf-8", errors="ignore").splitlines():
+        for line in bashrc.read_text(encoding="utf-8", errors="ignore").splitlines():
             match = pattern.match(line.strip())
             if not match:
                 continue
             key_value = _normalize_secret_value(match.group("value"))
             if key_value:
-                return key_value, f"{claude_md}#{match.group('name')}"
+                return key_value, f"{bashrc}#{match.group('name')}"
     return "", ""
 
 
@@ -79,7 +77,7 @@ def resolve_api_key(
     preferred_env_names: Optional[Iterable[str]] = None,
     project_root: Optional[Path] = None,
 ) -> Tuple[str, str]:
-    """Resolve API key in priority: provider config -> env -> .claude/CLAUDE.md."""
+    """Resolve API key in priority: provider config -> env -> ~/.bashrc."""
     direct_key = _normalize_secret_value(configured_key)
     if direct_key:
         return direct_key, "provider_config.api_key"
@@ -90,7 +88,8 @@ def resolve_api_key(
         if value:
             return value, f"env:{env_name}"
 
-    file_key, source = _load_api_key_from_claude_md(env_names, project_root)
+    _ = project_root
+    file_key, source = _load_api_key_from_bashrc(env_names)
     if file_key:
         return file_key, source
 

@@ -90,8 +90,7 @@ class OutlineService:
                 f"文本服务商 {active_provider} 未配置 API Key。\n"
                 "解决方案：\n"
                 "1. 在系统设置页面填写 API Key\n"
-                "2. 或设置环境变量（如 GLM_API_KEY）\n"
-                "3. 或在项目根目录 .claude/CLAUDE.md 中配置 GLM_API_KEY"
+                "2. 或在 ~/.bashrc 中设置环境变量（如 export GLM_tokens=你的密钥）"
             )
 
         provider_config['api_key'] = api_key
