@@ -1,6 +1,7 @@
 import logging
 import yaml
 from pathlib import Path
+from backend.utils.secret_resolver import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,18 @@ class Config:
         if not config_path.exists():
             logger.warning(f"图片配置文件不存在: {config_path}，使用默认配置")
             cls._image_providers_config = {
-                'active_provider': 'google_genai',
-                'providers': {}
+                'active_provider': 'glm_image',
+                'providers': {
+                    'glm_image': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://open.bigmodel.cn/api/paas',
+                        'endpoint_type': '/v4/images/generations',
+                        'model': 'glm-image',
+                        'default_aspect_ratio': '3:4',
+                        'high_concurrency': False,
+                    }
+                },
             }
             return cls._image_providers_config
 
@@ -60,8 +71,18 @@ class Config:
         if not config_path.exists():
             logger.warning(f"文本配置文件不存在: {config_path}，使用默认配置")
             cls._text_providers_config = {
-                'active_provider': 'google_gemini',
-                'providers': {}
+                'active_provider': 'glm_47',
+                'providers': {
+                    'glm_47': {
+                        'type': 'openai_compatible',
+                        'api_key': '',
+                        'base_url': 'https://open.bigmodel.cn/api/paas',
+                        'endpoint_type': '/v4/chat/completions',
+                        'model': 'glm-4.7',
+                        'temperature': 0.7,
+                        'max_output_tokens': 8000,
+                    }
+                },
             }
             return cls._text_providers_config
 
@@ -85,7 +106,7 @@ class Config:
     @classmethod
     def get_active_image_provider(cls):
         config = cls.load_image_providers_config()
-        active = config.get('active_provider', 'google_genai')
+        active = config.get('active_provider', 'glm_image')
         logger.debug(f"当前激活的图片服务商: {active}")
         return active
 
@@ -123,14 +144,21 @@ class Config:
         provider_config = providers[provider_name].copy()
 
         # 验证必要字段
-        if not provider_config.get('api_key'):
+        api_key, api_key_source = resolve_api_key(
+            configured_key=provider_config.get('api_key', ''),
+            preferred_env_names=[provider_config.get('api_key_env', '')],
+        )
+        if not api_key:
             logger.error(f"图片服务商 [{provider_name}] 未配置 API Key")
             raise ValueError(
                 f"服务商 {provider_name} 未配置 API Key\n"
                 "解决方案：\n"
                 "1. 在系统设置页面编辑该服务商，填写 API Key\n"
-                "2. 或手动在 image_providers.yaml 中添加 api_key 字段"
+                "2. 或手动在 image_providers.yaml 中添加 api_key 字段\n"
+                "3. 或设置环境变量 / .claude/CLAUDE.md 中的 GLM_API_KEY"
             )
+        provider_config['api_key'] = api_key
+        provider_config['api_key_source'] = api_key_source
 
         provider_type = provider_config.get('type', provider_name)
         if provider_type in ['openai', 'openai_compatible', 'image_api']:

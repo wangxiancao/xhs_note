@@ -764,6 +764,8 @@ export async function testConnection(config: {
   api_key?: string
   base_url?: string
   model: string
+  endpoint_type?: string
+  api_key_env?: string
 }): Promise<{
   success: boolean
   message?: string

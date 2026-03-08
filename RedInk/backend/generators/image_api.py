@@ -15,13 +15,13 @@ class ImageApiGenerator(ImageGeneratorBase):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         logger.debug("初始化 ImageApiGenerator...")
-        self.base_url = config.get('base_url', 'https://api.example.com').rstrip('/').rstrip('/v1')
-        self.model = config.get('model', 'default-model')
+        self.base_url = config.get('base_url', 'https://open.bigmodel.cn/api/paas').rstrip('/')
+        self.model = config.get('model', 'glm-image')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
-        self.image_size = config.get('image_size', '4K')
+        self.image_size = config.get('image_size', '')
 
         # 支持自定义端点路径
-        endpoint_type = config.get('endpoint_type', '/v1/images/generations')
+        endpoint_type = config.get('endpoint_type', '/v4/images/generations')
         # 兼容旧的简写格式
         if endpoint_type == 'images':
             endpoint_type = '/v1/images/generations'
@@ -31,6 +31,10 @@ class ImageApiGenerator(ImageGeneratorBase):
         if not endpoint_type.startswith('/'):
             endpoint_type = '/' + endpoint_type
         self.endpoint_type = endpoint_type
+        if self.base_url.endswith('/v1') and self.endpoint_type.startswith('/v1/'):
+            self.base_url = self.base_url[:-3]
+        if self.base_url.endswith('/v4') and self.endpoint_type.startswith('/v4/'):
+            self.base_url = self.base_url[:-3]
 
         logger.info(f"ImageApiGenerator 初始化完成: base_url={self.base_url}, model={self.model}, endpoint={self.endpoint_type}")
 
@@ -46,7 +50,7 @@ class ImageApiGenerator(ImageGeneratorBase):
 
     def get_supported_sizes(self) -> List[str]:
         """获取支持的图片尺寸"""
-        return ["1K", "2K", "4K"]
+        return ["1024x1024", "768x1344", "864x1152", "960x1280", "1056x1056", "1056x1440", "1440x1056", "1568x672"]
 
     def get_supported_aspect_ratios(self) -> List[str]:
         """获取支持的宽高比"""
@@ -92,6 +96,32 @@ class ImageApiGenerator(ImageGeneratorBase):
         else:
             return self._generate_via_images_api(prompt, aspect_ratio, model, reference_image, reference_images)
 
+    def _is_glm_image_request(self, model: str) -> bool:
+        lowered_model = str(model or '').strip().lower()
+        return (
+            lowered_model.startswith('glm-image')
+            or 'open.bigmodel.cn' in self.base_url
+            or '/v4/images/generations' in self.endpoint_type
+        )
+
+    def _resolve_glm_size(self, aspect_ratio: str) -> str:
+        mapping = {
+            "1:1": "1024x1024",
+            "3:4": "768x1024",
+            "4:3": "1024x768",
+            "9:16": "720x1280",
+            "16:9": "1280x720",
+            "2:3": "768x1152",
+            "3:2": "1152x768",
+            "4:5": "864x1080",
+            "5:4": "1080x864",
+        }
+
+        if isinstance(self.image_size, str) and "x" in self.image_size:
+            return self.image_size
+        normalized_ratio = str(aspect_ratio or "").strip()
+        return mapping.get(normalized_ratio, "1024x1024")
+
     def _generate_via_images_api(
         self,
         prompt: str,
@@ -106,13 +136,17 @@ class ImageApiGenerator(ImageGeneratorBase):
             "Content-Type": "application/json"
         }
 
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model,
             "prompt": prompt,
-            "response_format": "b64_json",
-            "aspect_ratio": aspect_ratio,
-            "image_size": self.image_size
         }
+        if self._is_glm_image_request(model):
+            payload["size"] = self._resolve_glm_size(aspect_ratio)
+        else:
+            payload["response_format"] = "b64_json"
+            payload["aspect_ratio"] = aspect_ratio
+            if self.image_size:
+                payload["image_size"] = self.image_size
 
         # 收集所有参考图片
         all_reference_images = []
@@ -181,14 +215,19 @@ class ImageApiGenerator(ImageGeneratorBase):
                 logger.info(f"✅ Image API 图片生成成功: {len(image_data)} bytes")
                 return image_data
 
+            if "url" in item and item["url"]:
+                image_url = str(item["url"]).strip()
+                logger.info("API 返回图片 URL，开始下载")
+                return self._download_image(image_url)
+
         logger.error(f"无法从响应中提取图片数据: {str(result)[:200]}")
         raise Exception(
-            f"图片数据提取失败：未找到 b64_json 数据。\n"
+            f"图片数据提取失败：未找到 b64_json 或 url 数据。\n"
             f"API响应片段: {str(result)[:500]}\n"
             "可能原因：\n"
             "1. API返回格式与预期不符\n"
             "2. response_format 参数未生效\n"
-            "3. 该模型不支持 b64_json 格式\n"
+            "3. 该模型返回 URL 而非 Base64\n"
             "建议：检查API文档确认返回格式要求"
         )
 

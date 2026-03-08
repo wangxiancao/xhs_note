@@ -64,7 +64,7 @@ export const textTypeOptions = [
 // 图片服务商类型选项
 export const imageTypeOptions = [
   { value: 'google_genai', label: 'Google GenAI' },
-  { value: 'image_api', label: 'OpenAI 兼容接口' }
+  { value: 'image_api', label: 'GLM/OpenAI 兼容接口' }
 ]
 
 /**
@@ -109,7 +109,7 @@ export function useProviderForm() {
       api_key_masked: '',
       base_url: '',
       model: '',
-      endpoint_type: '/v1/chat/completions',
+      endpoint_type: '/v4/chat/completions',
       _has_api_key: false
     }
   }
@@ -127,7 +127,7 @@ export function useProviderForm() {
       model: '',
       high_concurrency: false,
       short_prompt: false,
-      endpoint_type: '/v1/images/generations',
+      endpoint_type: '/v4/images/generations',
       _has_api_key: false
     }
   }
@@ -209,7 +209,7 @@ export function useProviderForm() {
       api_key_masked: provider.api_key_masked || '',
       base_url: provider.base_url || '',
       model: provider.model || '',
-      endpoint_type: provider.endpoint_type || '/v1/chat/completions',
+      endpoint_type: provider.endpoint_type || '/v4/chat/completions',
       _has_api_key: !!provider.api_key_masked
     }
     showTextModal.value = true
@@ -298,7 +298,8 @@ export function useProviderForm() {
         provider_name: editingTextProvider.value || undefined,
         api_key: textForm.value.api_key || undefined,
         base_url: textForm.value.base_url,
-        model: textForm.value.model
+        model: textForm.value.model,
+        endpoint_type: textForm.value.endpoint_type
       })
       if (result.success) {
         alert('✅ ' + result.message)
@@ -320,7 +321,8 @@ export function useProviderForm() {
         provider_name: name,
         api_key: undefined,
         base_url: provider.base_url,
-        model: provider.model
+        model: provider.model,
+        endpoint_type: provider.endpoint_type
       })
       if (result.success) {
         alert('✅ ' + result.message)
@@ -363,7 +365,7 @@ export function useProviderForm() {
       model: provider.model || '',
       high_concurrency: provider.high_concurrency || false,
       short_prompt: provider.short_prompt || false,
-      endpoint_type: provider.endpoint_type || '/v1/images/generations',
+      endpoint_type: provider.endpoint_type || '/v4/images/generations',
       _has_api_key: !!provider.api_key_masked
     }
     showImageModal.value = true
@@ -454,7 +456,8 @@ export function useProviderForm() {
         provider_name: editingImageProvider.value || undefined,
         api_key: imageForm.value.api_key || undefined,
         base_url: imageForm.value.base_url,
-        model: imageForm.value.model
+        model: imageForm.value.model,
+        endpoint_type: imageForm.value.endpoint_type
       })
       if (result.success) {
         alert('✅ ' + result.message)
@@ -476,7 +479,8 @@ export function useProviderForm() {
         provider_name: name,
         api_key: undefined,
         base_url: provider.base_url,
-        model: provider.model
+        model: provider.model,
+        endpoint_type: provider.endpoint_type
       })
       if (result.success) {
         alert('✅ ' + result.message)

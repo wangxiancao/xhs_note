@@ -6,6 +6,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from backend.utils.text_client import get_text_chat_client
+from backend.utils.secret_resolver import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -40,20 +41,23 @@ class OutlineService:
         logger.warning("text_providers.yaml 不存在，使用默认配置")
         # 默认配置
         return {
-            'active_provider': 'google_gemini',
+            'active_provider': 'glm_47',
             'providers': {
-                'google_gemini': {
-                    'type': 'google_gemini',
-                    'model': 'gemini-2.0-flash-exp',
-                    'temperature': 1.0,
-                    'max_output_tokens': 8000
+                'glm_47': {
+                    'type': 'openai_compatible',
+                    'api_key': '',
+                    'base_url': 'https://open.bigmodel.cn/api/paas',
+                    'endpoint_type': '/v4/chat/completions',
+                    'model': 'glm-4.7',
+                    'temperature': 0.7,
+                    'max_output_tokens': 8000,
                 }
             }
         }
 
     def _get_client(self):
         """根据配置获取客户端"""
-        active_provider = self.text_config.get('active_provider', 'google_gemini')
+        active_provider = self.text_config.get('active_provider', 'glm_47')
         providers = self.text_config.get('providers', {})
 
         if not providers:
@@ -74,15 +78,24 @@ class OutlineService:
                 "解决方案：在系统设置中选择一个可用的服务商"
             )
 
-        provider_config = providers.get(active_provider, {})
+        provider_config = providers.get(active_provider, {}).copy()
+        api_key, api_key_source = resolve_api_key(
+            configured_key=provider_config.get('api_key', ''),
+            preferred_env_names=[provider_config.get('api_key_env', '')],
+        )
 
-        if not provider_config.get('api_key'):
+        if not api_key:
             logger.error(f"文本服务商 [{active_provider}] 未配置 API Key")
             raise ValueError(
-                f"文本服务商 {active_provider} 未配置 API Key\n"
-                "解决方案：在系统设置页面编辑该服务商，填写 API Key"
+                f"文本服务商 {active_provider} 未配置 API Key。\n"
+                "解决方案：\n"
+                "1. 在系统设置页面填写 API Key\n"
+                "2. 或设置环境变量（如 GLM_API_KEY）\n"
+                "3. 或在项目根目录 .claude/CLAUDE.md 中配置 GLM_API_KEY"
             )
 
+        provider_config['api_key'] = api_key
+        logger.debug(f"文本服务商 [{active_provider}] API Key 来源: {api_key_source}")
         logger.info(f"使用文本服务商: {active_provider} (type={provider_config.get('type')})")
         return get_text_chat_client(provider_config)
 
@@ -143,12 +156,12 @@ class OutlineService:
                 logger.debug(f"添加了 {len(images)} 张参考图片到提示词")
 
             # 从配置中获取模型参数
-            active_provider = self.text_config.get('active_provider', 'google_gemini')
+            active_provider = self.text_config.get('active_provider', 'glm_47')
             providers = self.text_config.get('providers', {})
             provider_config = providers.get(active_provider, {})
 
-            model = provider_config.get('model', 'gemini-2.0-flash-exp')
-            temperature = provider_config.get('temperature', 1.0)
+            model = provider_config.get('model', 'glm-4.7')
+            temperature = provider_config.get('temperature', 0.7)
             max_output_tokens = provider_config.get('max_output_tokens', 8000)
 
             logger.info(f"调用文本生成 API: model={model}, temperature={temperature}")

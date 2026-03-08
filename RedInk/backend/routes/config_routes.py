@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 from flask import Blueprint, request, jsonify
 from .utils import prepare_providers_for_response
+from backend.utils.secret_resolver import resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +42,34 @@ def create_config_blueprint():
         try:
             # 读取图片生成配置
             image_config = _read_config(IMAGE_CONFIG_PATH, {
-                'active_provider': 'google_genai',
-                'providers': {}
+                'active_provider': 'glm_image',
+                'providers': {
+                    'glm_image': {
+                        'type': 'image_api',
+                        'api_key': '',
+                        'base_url': 'https://open.bigmodel.cn/api/paas',
+                        'endpoint_type': '/v4/images/generations',
+                        'model': 'glm-image',
+                        'default_aspect_ratio': '3:4',
+                        'high_concurrency': False,
+                    }
+                },
             })
 
             # 读取文本生成配置
             text_config = _read_config(TEXT_CONFIG_PATH, {
-                'active_provider': 'google_gemini',
-                'providers': {}
+                'active_provider': 'glm_47',
+                'providers': {
+                    'glm_47': {
+                        'type': 'openai_compatible',
+                        'api_key': '',
+                        'base_url': 'https://open.bigmodel.cn/api/paas',
+                        'endpoint_type': '/v4/chat/completions',
+                        'model': 'glm-4.7',
+                        'temperature': 0.7,
+                        'max_output_tokens': 8000,
+                    }
+                },
             })
 
             return jsonify({
@@ -149,12 +170,21 @@ def create_config_blueprint():
             config = {
                 'api_key': data.get('api_key'),
                 'base_url': data.get('base_url'),
-                'model': data.get('model')
+                'model': data.get('model'),
+                'endpoint_type': data.get('endpoint_type'),
+                'api_key_env': data.get('api_key_env'),
             }
 
             # 如果没有提供 api_key，从配置文件读取
             if not config['api_key'] and provider_name:
                 config = _load_provider_config(provider_type, provider_name, config)
+
+            # 若页面未填 key，则尝试环境变量与 .claude/CLAUDE.md 回退
+            api_key, _ = resolve_api_key(
+                configured_key=config.get('api_key', ''),
+                preferred_env_names=[config.get('api_key_env', '')],
+            )
+            config['api_key'] = api_key
 
             if not config['api_key']:
                 return jsonify({"success": False, "error": "API Key 未配置"}), 400
@@ -183,6 +213,18 @@ def _write_config(path: Path, config: dict):
     """写入配置文件"""
     with open(path, 'w', encoding='utf-8') as f:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+
+
+def _compose_endpoint_url(base_url: str, endpoint_type: str) -> str:
+    """拼接 base_url 与 endpoint，避免重复出现 /v1 或 /v4。"""
+    base = (base_url or '').rstrip('/')
+    endpoint = endpoint_type if endpoint_type.startswith('/') else '/' + endpoint_type
+    for prefix in ('/v1/', '/v4/'):
+        marker = prefix[:-1]  # '/v1' or '/v4'
+        if base.endswith(marker) and endpoint.startswith(prefix):
+            base = base[: -len(marker)]
+            break
+    return f"{base}{endpoint}"
 
 
 def _update_provider_config(config_path: Path, new_data: dict):
@@ -269,6 +311,10 @@ def _load_provider_config(provider_type: str, provider_name: str, config: dict) 
                     config['base_url'] = saved.get('base_url')
                 if not config['model']:
                     config['model'] = saved.get('model')
+                if not config.get('endpoint_type'):
+                    config['endpoint_type'] = saved.get('endpoint_type')
+                if not config.get('api_key_env'):
+                    config['api_key_env'] = saved.get('api_key_env')
 
     return config
 
@@ -364,8 +410,9 @@ def _test_openai_compatible(config: dict, test_prompt: str) -> dict:
     """测试 OpenAI 兼容接口"""
     import requests
 
-    base_url = config['base_url'].rstrip('/').rstrip('/v1') if config.get('base_url') else 'https://api.openai.com'
-    url = f"{base_url}/v1/chat/completions"
+    base_url = config.get('base_url', '').rstrip('/') or 'https://api.openai.com'
+    endpoint_type = config.get('endpoint_type') or '/v1/chat/completions'
+    url = _compose_endpoint_url(base_url, endpoint_type)
 
     payload = {
         "model": config.get('model') or 'gpt-3.5-turbo',
@@ -396,22 +443,45 @@ def _test_image_api(config: dict) -> dict:
     """测试图片 API 连接"""
     import requests
 
-    base_url = config['base_url'].rstrip('/').rstrip('/v1') if config.get('base_url') else 'https://api.openai.com'
-    url = f"{base_url}/v1/models"
+    base_url = config.get('base_url', '').rstrip('/') or 'https://api.openai.com'
+    endpoint_type = config.get('endpoint_type') or '/v1/images/generations'
+    url = _compose_endpoint_url(base_url, endpoint_type)
 
-    response = requests.get(
+    model = config.get('model') or 'glm-image'
+    payload = {
+        "model": model,
+        "prompt": "测试连接：请返回一张简洁背景图",
+    }
+    if str(model).lower().startswith('glm-image') or '/v4/images/generations' in endpoint_type:
+        payload["size"] = "1024x1024"
+    else:
+        payload["response_format"] = "b64_json"
+        payload["size"] = "1024x1024"
+
+    response = requests.post(
         url,
-        headers={'Authorization': f"Bearer {config['api_key']}"},
-        timeout=30
+        headers={
+            'Authorization': f"Bearer {config['api_key']}",
+            'Content-Type': 'application/json',
+        },
+        json=payload,
+        timeout=60,
     )
 
-    if response.status_code == 200:
-        return {
-            "success": True,
-            "message": "连接成功！仅代表连接稳定，不确定是否可以稳定支持图片生成"
-        }
-    else:
-        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+    if response.status_code != 200:
+        raise Exception(f"HTTP {response.status_code}: {response.text[:300]}")
+
+    result = response.json()
+    data = result.get("data") if isinstance(result, dict) else None
+    if isinstance(data, list) and data:
+        item = data[0]
+        if isinstance(item, dict) and (item.get("url") or item.get("b64_json")):
+            return {
+                "success": True,
+                "message": "连接成功，图片接口可用"
+            }
+
+    raise Exception(f"响应格式异常: {str(result)[:300]}")
 
 
 def _check_response(result_text: str) -> dict:
