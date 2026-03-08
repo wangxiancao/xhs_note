@@ -56,11 +56,16 @@ npm run dev
 4. 在结果页生成标题/文案/标签并确认。
 5. 点击“发布到小红书”触发发布。
 
+补充：
+
+- 历史记录页仍保留（`/history`），可查看、续跑和下载已生成任务。
+
 ## 核心接口
 
 - `POST /api/outline` 生成大纲
 - `POST /api/content` 生成标题/文案/标签
 - `POST /api/generate` 生成图片（SSE）
+- `GET/POST/PUT/DELETE /api/history*` 历史记录管理
 - `GET /api/publish/status` 检查登录态
 - `POST /api/publish/from-result` 从生成结果发布
 
