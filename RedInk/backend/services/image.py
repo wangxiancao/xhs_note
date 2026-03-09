@@ -151,6 +151,118 @@ class ImageService:
                 return match.group(1).strip()
         return response_text.strip()
 
+    def _extract_cover_text_value(self, page_content: str, keys: List[str]) -> str:
+        """从封面文本中提取字段值（如标题、副标题）"""
+        if not page_content:
+            return ""
+        for raw_line in page_content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            for key in keys:
+                if line.startswith(key):
+                    value = line.split("：", 1)[1].strip() if "：" in line else ""
+                    if value:
+                        return value
+        return ""
+
+    def _escape_tex_text(self, text: str) -> str:
+        """将普通文本转为相对安全的 TeX 文本"""
+        if not text:
+            return ""
+        replacements = {
+            "\\": r"\textbackslash{}",
+            "&": r"\&",
+            "%": r"\%",
+            "$": r"\$",
+            "#": r"\#",
+            "_": r"\_",
+            "{": r"\{",
+            "}": r"\}",
+            "~": r"\textasciitilde{}",
+            "^": r"\textasciicircum{}",
+        }
+        escaped = text
+        for old, new in replacements.items():
+            escaped = escaped.replace(old, new)
+        return escaped
+
+    def _build_cover_text_layout_spec(self, page_content: str, user_topic: str) -> str:
+        """构造封面文字与坐标清单，注入提示词强化排版稳定性"""
+        title = self._extract_cover_text_value(page_content, ["标题：", "主标题：", "标题:"])
+        subtitle = self._extract_cover_text_value(page_content, ["副标题：", "副标题:"])
+        tag = self._extract_cover_text_value(page_content, ["Tag：", "TAG：", "标签：", "标签:"])
+        top_badge = self._extract_cover_text_value(page_content, ["顶部标签：", "胶囊标签："])
+
+        hashtags: List[str] = []
+        for raw_line in (page_content or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                hashtags.append(line)
+        hashtags = hashtags[:3]
+
+        if not title:
+            title = (user_topic or "夏日美好且治愈").strip()
+        if not subtitle:
+            subtitle = "把生活调成静音模式"
+        if not tag:
+            tag = "@ 夏日氛围感"
+        if not top_badge:
+            top_badge = "建议收藏"
+        if not hashtags:
+            hashtags = ["#治愈系生活", "#夏日碎片收集", "#慢生活"]
+
+        footer_words = ["慢下来", "去生活", "爱自己"]
+        title_tex = self._escape_tex_text(title)
+        subtitle_tex = self._escape_tex_text(subtitle)
+        tag_tex = self._escape_tex_text(tag)
+        top_badge_tex = self._escape_tex_text(top_badge)
+        hashtags_tex = [self._escape_tex_text(h) for h in hashtags]
+        footer_words_tex = [self._escape_tex_text(w) for w in footer_words]
+
+        spec_lines = [
+            "坐标系统：画布 1242x1660，原点在左下角，单位 pt。",
+            "所有文字必须按以下位置逐项摆放，不得交换区域，不得越界。",
+            "",
+            "1) 主标题",
+            f"- 文案：{title_tex}",
+            "- 锚点：x=98, y=1040, anchor=west",
+            "- 文本框宽度：860",
+            "- 样式：深蓝色、加粗、大字号、多行左对齐",
+            "",
+            "2) 副标题",
+            f"- 文案：{subtitle_tex}",
+            "- 锚点：x=98, y=900, anchor=west",
+            "- 文本框宽度：760",
+            "- 样式：中等字号、深蓝色或次深蓝",
+            "",
+            "3) Tag（椭圆描边）",
+            f"- 文案：{tag_tex}",
+            "- 锚点：x=110, y=620, anchor=west",
+            "- 样式：椭圆描边、深蓝描边+深蓝文字",
+            "",
+            "4) Hashtag（2-3 行）",
+            f"- 第1行：{hashtags_tex[0]}；位置 x=110, y=500",
+            f"- 第2行：{hashtags_tex[1] if len(hashtags_tex) > 1 else hashtags_tex[0]}；位置 x=110, y=430",
+            f"- 第3行：{hashtags_tex[2] if len(hashtags_tex) > 2 else hashtags_tex[min(1, len(hashtags_tex)-1)]}；位置 x=110, y=360",
+            "- 样式：小字号、浅蓝灰色、左对齐",
+            "",
+            "5) 顶部胶囊标签",
+            f"- 文案：{top_badge_tex}",
+            "- 锚点：x=960, y=1540, anchor=center",
+            "- 样式：深蓝底+浅色字，尺寸小，不抢主标题",
+            "",
+            "6) 底部三词",
+            f"- 左词：{footer_words_tex[0]}，位置 x=220, y=70",
+            f"- 中词：{footer_words_tex[1]}，位置 x=620, y=70",
+            f"- 右词：{footer_words_tex[2]}，位置 x=1020, y=70",
+            "- 样式：极小字号，低对比度，配合底部细横线",
+        ]
+
+        return "\n".join(spec_lines)
+
     def _normalize_to_target_size(self, image_data: bytes) -> bytes:
         """统一图片尺寸到 1242x1660"""
         with Image.open(io.BytesIO(image_data)) as img:
@@ -273,12 +385,14 @@ class ImageService:
         """通过文本模型生成封面 TeX，编译失败时自动重试修复"""
         compile_feedback = "无"
         previous_tex = "无"
+        text_layout_spec = self._build_cover_text_layout_spec(page_content, user_topic)
 
         for attempt in range(1, self.COVER_TEX_MAX_RETRY + 1):
             prompt = self.cover_latex_prompt_template.format(
                 page_content=page_content,
                 full_outline=full_outline or "未提供",
                 user_topic=user_topic or "未提供",
+                text_layout_spec=text_layout_spec,
                 attempt=attempt,
                 compile_feedback=compile_feedback,
                 previous_tex=previous_tex,
