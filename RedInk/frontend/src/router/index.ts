@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import OutlineView from '../views/OutlineView.vue'
+import CoverView from '../views/CoverView.vue'
 import GenerateView from '../views/GenerateView.vue'
 import ResultView from '../views/ResultView.vue'
 import HistoryView from '../views/HistoryView.vue'
@@ -23,6 +24,11 @@ const router = createRouter({
       path: '/generate',
       name: 'generate',
       component: GenerateView
+    },
+    {
+      path: '/cover',
+      name: 'cover',
+      component: CoverView
     },
     {
       path: '/result',

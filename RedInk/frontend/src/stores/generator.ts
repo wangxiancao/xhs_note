@@ -10,8 +10,9 @@
  * 状态流转：
  * 1. input: 用户输入主题
  * 2. outline: 生成并编辑大纲
- * 3. generating: 正在生成图片
- * 4. result: 查看生成结果
+ * 3. cover: 封面创作与预览
+ * 4. generating: 正在生成图片
+ * 5. result: 查看生成结果
  */
 import { defineStore } from 'pinia'
 import type { Page } from '../api'
@@ -39,8 +40,8 @@ export interface GeneratedContent {
 }
 
 export interface GeneratorState {
-  // 当前阶段：input-输入主题, outline-编辑大纲, generating-生成中, result-查看结果
-  stage: 'input' | 'outline' | 'generating' | 'result'
+  // 当前阶段：input-输入主题, outline-编辑大纲, cover-封面创作, generating-生成中, result-查看结果
+  stage: 'input' | 'outline' | 'cover' | 'generating' | 'result'
 
   // 用户输入的主题
   topic: string
@@ -187,6 +188,13 @@ export const useGeneratorStore = defineStore('generator', {
       this.outline.pages = pages
       this.stage = 'outline'
       this.outlineStatus = 'done'  // 设置大纲为已完成状态
+    },
+
+    /**
+     * 进入封面创作阶段
+     */
+    startCoverEditing() {
+      this.stage = 'cover'
     },
 
     /**
