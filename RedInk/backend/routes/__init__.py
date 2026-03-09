@@ -4,6 +4,7 @@ API 路由模块
 本模块将 API 路由按功能拆分为多个子模块：
 - outline_routes: 大纲生成相关 API
 - image_routes: 图片生成/获取相关 API
+- cover_routes: 封面创作/版本管理 API
 - history_routes: 历史记录 CRUD API
 - config_routes: 配置管理 API
 - content_routes: 内容生成相关 API（标题、文案、标签）
@@ -26,6 +27,7 @@ def create_api_blueprint():
     """
     from .outline_routes import create_outline_blueprint
     from .image_routes import create_image_blueprint
+    from .cover_routes import create_cover_blueprint
     from .history_routes import create_history_blueprint
     from .config_routes import create_config_blueprint
     from .content_routes import create_content_blueprint
@@ -37,6 +39,7 @@ def create_api_blueprint():
     # 将子蓝图注册到主蓝图（不带额外前缀）
     api_bp.register_blueprint(create_outline_blueprint())
     api_bp.register_blueprint(create_image_blueprint())
+    api_bp.register_blueprint(create_cover_blueprint())
     api_bp.register_blueprint(create_history_blueprint())
     api_bp.register_blueprint(create_config_blueprint())
     api_bp.register_blueprint(create_content_blueprint())

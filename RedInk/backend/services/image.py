@@ -151,6 +151,30 @@ class ImageService:
                 return match.group(1).strip()
         return response_text.strip()
 
+    def _cover_spec_to_page_content(self, cover_spec: Dict[str, Any]) -> str:
+        """将结构化 cover_spec 转换为封面页面文本"""
+        if not isinstance(cover_spec, dict):
+            return "[封面]\n标题：未命名封面"
+
+        title = str(cover_spec.get("title") or "未命名封面").strip()
+        subtitle = str(cover_spec.get("subtitle") or "").strip()
+        tag = str(cover_spec.get("tag") or "").strip()
+        top_badge = str(cover_spec.get("top_badge") or "").strip()
+        hashtags = cover_spec.get("hashtags") if isinstance(cover_spec.get("hashtags"), list) else []
+
+        lines = ["[封面]", f"标题：{title}"]
+        if subtitle:
+            lines.append(f"副标题：{subtitle}")
+        if tag:
+            lines.append(f"标签：{tag}")
+        if top_badge:
+            lines.append(f"顶部标签：{top_badge}")
+        for item in hashtags[:3]:
+            text = str(item).strip()
+            if text:
+                lines.append(text if text.startswith("#") else f"#{text}")
+        return "\n".join(lines)
+
     def _extract_cover_text_value(self, page_content: str, keys: List[str]) -> str:
         """从封面文本中提取字段值（如标题、副标题）"""
         if not page_content:
@@ -300,6 +324,20 @@ class ImageService:
             return fallback[-600:]
         return "Unknown TeX compile error"
 
+    def _sanitize_generated_tex(self, tex_code: str) -> str:
+        """
+        预处理模型输出的 TeX，修正常见可自动恢复错误
+
+        当前修复：
+        - xcolor HTML 颜色写成 {#RRGGBB} 时去掉 #，避免
+          `Illegal parameter number in definition of \\@@clr.`
+        """
+        if not tex_code:
+            return tex_code
+        sanitized = re.sub(r"\{#([0-9A-Fa-f]{6})\}", r"{\1}", tex_code)
+        sanitized = re.sub(r"\{#([0-9A-Fa-f]{3})\}", r"{\1}", sanitized)
+        return sanitized
+
     def _is_image_visually_blank(self, image_data: bytes) -> bool:
         """检测渲染结果是否近似空白图"""
         try:
@@ -323,6 +361,7 @@ class ImageService:
                 ppm_prefix = work_dir / "cover"
                 ppm_png = work_dir / "cover.png"
 
+                tex_code = self._sanitize_generated_tex(tex_code)
                 tex_file.write_text(tex_code, encoding="utf-8")
 
                 env = os.environ.copy()
@@ -429,6 +468,53 @@ class ImageService:
             )
 
         raise RuntimeError(f"封面 TeX 连续编译失败：{compile_feedback}")
+
+    def render_cover_png_bytes(
+        self,
+        cover_spec: Dict[str, Any],
+        full_outline: str = "",
+        user_topic: str = "",
+    ) -> bytes:
+        """
+        基于封面结构化参数渲染封面 PNG（二进制）
+
+        Args:
+            cover_spec: 封面结构化参数
+            full_outline: 完整大纲文本（可选）
+            user_topic: 用户主题（可选）
+
+        Returns:
+            bytes: PNG 二进制数据
+        """
+        page_content = self._cover_spec_to_page_content(cover_spec)
+        return self._generate_cover_via_latex(
+            page_content=page_content,
+            full_outline=full_outline,
+            user_topic=user_topic,
+        )
+
+    def save_cover_png(
+        self,
+        task_id: str,
+        filename: str,
+        image_data: bytes,
+    ) -> str:
+        """
+        保存封面 PNG 到任务目录，并生成缩略图
+
+        Args:
+            task_id: 任务 ID
+            filename: 文件名（如 cover_v2.png）
+            image_data: PNG 二进制数据
+
+        Returns:
+            str: 文件完整路径
+        """
+        if not task_id:
+            raise ValueError("task_id 不能为空")
+        self.current_task_dir = os.path.join(self.history_root_dir, task_id)
+        os.makedirs(self.current_task_dir, exist_ok=True)
+        return self._save_image(image_data, filename, self.current_task_dir)
 
     def _save_image(self, image_data: bytes, filename: str, task_dir: str = None) -> str:
         """

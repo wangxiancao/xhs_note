@@ -37,6 +37,7 @@ def create_history_blueprint():
         - topic: 主题标题（必填）
         - outline: 大纲内容（必填），包含 pages 数组等
         - task_id: 关联的任务 ID（可选）
+        - cover_spec: 封面结构化参数（可选）
 
         返回：
         - success: 是否成功
@@ -63,6 +64,7 @@ def create_history_blueprint():
             topic = data.get('topic')
             outline = data.get('outline')
             task_id = data.get('task_id')
+            cover_spec = data.get('cover_spec')
 
             if not topic or not outline:
                 return jsonify({
@@ -71,7 +73,7 @@ def create_history_blueprint():
                 }), 400
 
             history_service = get_history_service()
-            record_id = history_service.create_record(topic, outline, task_id)
+            record_id = history_service.create_record(topic, outline, task_id, cover_spec=cover_spec)
 
             return jsonify({
                 "success": True,
@@ -199,6 +201,9 @@ def create_history_blueprint():
         - images: 图片信息 { task_id, generated: [] }
         - status: 状态（draft/generating/partial/completed/error）
         - thumbnail: 缩略图文件名
+        - cover_spec: 封面结构化参数
+        - cover_versions: 封面版本数组
+        - selected_cover_version: 当前选中的封面版本 ID
 
         返回：
         - success: 是否成功
@@ -232,6 +237,9 @@ def create_history_blueprint():
             images = data.get('images')
             status = data.get('status')
             thumbnail = data.get('thumbnail')
+            cover_spec = data.get('cover_spec')
+            cover_versions = data.get('cover_versions')
+            selected_cover_version = data.get('selected_cover_version')
 
             history_service = get_history_service()
             success = history_service.update_record(
@@ -239,7 +247,10 @@ def create_history_blueprint():
                 outline=outline,
                 images=images,
                 status=status,
-                thumbnail=thumbnail
+                thumbnail=thumbnail,
+                cover_spec=cover_spec,
+                cover_versions=cover_versions,
+                selected_cover_version=selected_cover_version,
             )
 
             if not success:

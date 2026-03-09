@@ -202,6 +202,59 @@ export interface HistoryDetail {
   }
   status: string
   thumbnail: string | null
+  cover_spec?: CoverSpec
+  cover_versions?: CoverVersion[]
+  selected_cover_version?: string | null
+}
+
+export interface CoverSpec {
+  title: string
+  subtitle: string
+  tag: string
+  hashtags: string[]
+  top_badge: string
+  footer_words: string[]
+  positions: Record<string, any>
+  palette: Record<string, any>
+}
+
+export interface CoverVersion {
+  id: string
+  name: string
+  source: string
+  created_at: string
+  cover_spec: CoverSpec
+  task_id?: string | null
+  image_filename?: string | null
+}
+
+export interface CoverPreviewResponse {
+  success: boolean
+  image_base64?: string
+  mime_type?: string
+  width?: number
+  height?: number
+  error?: string
+}
+
+export interface CoverRegenerateResponse {
+  success: boolean
+  record_id?: string
+  task_id?: string
+  version_id?: string
+  selected_cover_version?: string
+  image_filename?: string
+  image_url?: string
+  error?: string
+}
+
+export interface CoverSelectResponse {
+  success: boolean
+  record_id?: string
+  selected_cover_version?: string
+  cover_spec?: CoverSpec
+  image_url?: string | null
+  error?: string
 }
 
 /**
@@ -211,6 +264,7 @@ export interface CreateHistoryParams {
   topic: string
   outline: { raw: string; pages: Page[] }
   task_id?: string
+  cover_spec?: CoverSpec
 }
 
 /**
@@ -221,6 +275,9 @@ export interface UpdateHistoryParams {
   images?: { task_id: string | null; generated: string[] }
   status?: string
   thumbnail?: string
+  cover_spec?: CoverSpec
+  cover_versions?: CoverVersion[]
+  selected_cover_version?: string | null
 }
 
 /**
@@ -233,6 +290,7 @@ export interface UpdateHistoryParams {
  * @param outline.raw - 大纲的原始文本
  * @param outline.pages - 解析后的页面列表
  * @param taskId - 可选的任务 ID，用于关联图片生成任务
+ * @param coverSpec - 可选的封面结构化参数（Phase A）
  *
  * @returns Promise<{ success: boolean; record_id?: string; error?: string }>
  * - success: 是否创建成功
@@ -259,7 +317,8 @@ export interface UpdateHistoryParams {
 export async function createHistory(
   topic: string,
   outline: { raw: string; pages: Page[] },
-  taskId?: string
+  taskId?: string,
+  coverSpec?: CoverSpec
 ): Promise<{ success: boolean; record_id?: string; error?: string }> {
   try {
     const response = await axios.post(
@@ -267,7 +326,8 @@ export async function createHistory(
       {
         topic,
         outline,
-        task_id: taskId
+        task_id: taskId,
+        cover_spec: coverSpec
       },
       {
         timeout: 10000 // 10秒超时
@@ -467,6 +527,52 @@ export async function updateHistory(
     }
     return { success: false, error: '未知错误，请稍后重试' }
   }
+}
+
+/**
+ * 生成封面预览（不落库）
+ */
+export async function previewCover(
+  data: {
+    record_id?: string
+    cover_spec?: CoverSpec
+    full_outline?: string
+    user_topic?: string
+  }
+): Promise<CoverPreviewResponse> {
+  const response = await axios.post<CoverPreviewResponse>(`${API_BASE_URL}/cover/preview`, data)
+  return response.data
+}
+
+/**
+ * 重新生成封面并写入版本
+ */
+export async function regenerateCover(
+  data: {
+    record_id: string
+    cover_spec?: CoverSpec
+    version_name?: string
+    source?: string
+    set_selected?: boolean
+    full_outline?: string
+    user_topic?: string
+  }
+): Promise<CoverRegenerateResponse> {
+  const response = await axios.post<CoverRegenerateResponse>(`${API_BASE_URL}/cover/regenerate`, data)
+  return response.data
+}
+
+/**
+ * 选择当前封面版本
+ */
+export async function selectCoverVersion(
+  data: {
+    record_id: string
+    version_id: string
+  }
+): Promise<CoverSelectResponse> {
+  const response = await axios.post<CoverSelectResponse>(`${API_BASE_URL}/cover/select`, data)
+  return response.data
 }
 
 /**

@@ -10,8 +10,6 @@ import json
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from pathlib import Path
-from enum import Enum
 
 
 class RecordStatus:
@@ -86,11 +84,161 @@ class HistoryService:
         """
         return os.path.join(self.history_dir, f"{record_id}.json")
 
+    def _extract_cover_field(self, text: str, prefixes: List[str]) -> str:
+        """从封面文本中按前缀提取字段值"""
+        if not text:
+            return ""
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            for prefix in prefixes:
+                if line.startswith(prefix):
+                    if "：" in line:
+                        return line.split("：", 1)[1].strip()
+                    if ":" in line:
+                        return line.split(":", 1)[1].strip()
+                    return ""
+        return ""
+
+    def _default_cover_spec(self, outline: Optional[Dict], topic: str) -> Dict[str, Any]:
+        """
+        根据大纲和主题生成默认封面结构化参数
+
+        仅用于 Phase A 的基础数据模型，确保后续封面创作台可直接读取和编辑。
+        """
+        pages = (outline or {}).get("pages", []) if isinstance(outline, dict) else []
+        cover_content = ""
+        for page in pages:
+            if page.get("type") == "cover":
+                cover_content = page.get("content", "") or ""
+                break
+        if not cover_content and pages:
+            cover_content = pages[0].get("content", "") or ""
+
+        title = self._extract_cover_field(cover_content, ["标题：", "主标题：", "标题:", "主标题:"])
+        subtitle = self._extract_cover_field(cover_content, ["副标题：", "副标题:"])
+        tag = self._extract_cover_field(cover_content, ["标签：", "标签:", "Tag：", "TAG："])
+        top_badge = self._extract_cover_field(cover_content, ["顶部标签：", "胶囊标签："])
+
+        hashtags: List[str] = []
+        for raw_line in cover_content.splitlines():
+            line = raw_line.strip()
+            if line.startswith("#"):
+                hashtags.append(line)
+
+        if not title:
+            title = (topic or "未命名封面").strip()
+        if not subtitle:
+            subtitle = "把生活调成静音模式"
+        if not tag:
+            tag = "@ 夏日氛围感"
+        if not top_badge:
+            top_badge = "建议收藏"
+        if not hashtags:
+            hashtags = ["#治愈系生活", "#夏日碎片收集", "#慢生活"]
+
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "tag": tag,
+            "hashtags": hashtags[:3],
+            "top_badge": top_badge,
+            "footer_words": ["慢下来", "去生活", "爱自己"],
+            "positions": {
+                "title": {"x": 98, "y": 1040, "anchor": "west", "width": 860},
+                "subtitle": {"x": 98, "y": 900, "anchor": "west", "width": 760},
+                "tag": {"x": 110, "y": 620, "anchor": "west"},
+                "hashtags": [
+                    {"x": 110, "y": 500, "anchor": "west"},
+                    {"x": 110, "y": 430, "anchor": "west"},
+                    {"x": 110, "y": 360, "anchor": "west"},
+                ],
+                "top_badge": {"x": 960, "y": 1540, "anchor": "center"},
+                "footer_words": [
+                    {"x": 220, "y": 70, "anchor": "center"},
+                    {"x": 620, "y": 70, "anchor": "center"},
+                    {"x": 1020, "y": 70, "anchor": "center"},
+                ],
+            },
+            "palette": {
+                "background": ["#9FC5E8", "#A9CCE8", "#C7E0F4", "#D6EAF8"],
+                "text_primary": "#1E4E79",
+                "text_secondary": "#5D8AA8",
+                "card_fill": "#EAF4FB",
+                "badge_bg": "#1E4E79",
+                "badge_text": "#EAF4FB",
+            },
+        }
+
+    def _normalize_cover_spec(self, cover_spec: Any, outline: Optional[Dict], topic: str) -> Dict[str, Any]:
+        """标准化封面结构化参数，缺省字段自动补齐"""
+        base = self._default_cover_spec(outline, topic)
+        if not isinstance(cover_spec, dict):
+            return base
+
+        merged = {**base, **cover_spec}
+        merged["hashtags"] = (
+            cover_spec.get("hashtags")
+            if isinstance(cover_spec.get("hashtags"), list)
+            else base["hashtags"]
+        )
+        merged["footer_words"] = (
+            cover_spec.get("footer_words")
+            if isinstance(cover_spec.get("footer_words"), list)
+            else base["footer_words"]
+        )
+        merged["positions"] = (
+            cover_spec.get("positions")
+            if isinstance(cover_spec.get("positions"), dict)
+            else base["positions"]
+        )
+        merged["palette"] = (
+            cover_spec.get("palette")
+            if isinstance(cover_spec.get("palette"), dict)
+            else base["palette"]
+        )
+        return merged
+
+    def _ensure_cover_fields(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """兼容旧记录：补齐 cover_spec / cover_versions / selected_cover_version"""
+        outline = record.get("outline") if isinstance(record.get("outline"), dict) else {}
+        topic = record.get("title", "")
+        cover_spec = self._normalize_cover_spec(record.get("cover_spec"), outline, topic)
+        record["cover_spec"] = cover_spec
+
+        cover_versions = record.get("cover_versions")
+        if not isinstance(cover_versions, list):
+            cover_versions = []
+
+        if not cover_versions:
+            created_at = record.get("created_at") or datetime.now().isoformat()
+            version_id = "v1"
+            cover_versions = [
+                {
+                    "id": version_id,
+                    "name": "初始封面",
+                    "source": "outline",
+                    "created_at": created_at,
+                    "cover_spec": cover_spec,
+                    "task_id": (record.get("images") or {}).get("task_id"),
+                    "image_filename": None,
+                }
+            ]
+        record["cover_versions"] = cover_versions
+
+        selected_cover_version = record.get("selected_cover_version")
+        if not selected_cover_version:
+            selected_cover_version = cover_versions[0].get("id") if cover_versions else None
+        record["selected_cover_version"] = selected_cover_version
+        return record
+
     def create_record(
         self,
         topic: str,
         outline: Dict,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        cover_spec: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         创建新的历史记录
@@ -111,6 +259,8 @@ class HistoryService:
         # 生成唯一记录 ID
         record_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
+        normalized_cover_spec = self._normalize_cover_spec(cover_spec, outline, topic)
+        initial_cover_version_id = "v1"
 
         # 创建完整的记录对象
         record = {
@@ -124,7 +274,20 @@ class HistoryService:
                 "generated": []  # 初始无生成图片
             },
             "status": RecordStatus.DRAFT,  # 初始状态：草稿
-            "thumbnail": None  # 初始无缩略图
+            "thumbnail": None,  # 初始无缩略图
+            "cover_spec": normalized_cover_spec,
+            "cover_versions": [
+                {
+                    "id": initial_cover_version_id,
+                    "name": "初始封面",
+                    "source": "outline",
+                    "created_at": now,
+                    "cover_spec": normalized_cover_spec,
+                    "task_id": task_id,
+                    "image_filename": None,
+                }
+            ],
+            "selected_cover_version": initial_cover_version_id,
         }
 
         # 保存完整记录到独立文件
@@ -175,7 +338,8 @@ class HistoryService:
 
         try:
             with open(record_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                record = json.load(f)
+                return self._ensure_cover_fields(record)
         except Exception:
             return None
 
@@ -198,7 +362,10 @@ class HistoryService:
         outline: Optional[Dict] = None,
         images: Optional[Dict] = None,
         status: Optional[str] = None,
-        thumbnail: Optional[str] = None
+        thumbnail: Optional[str] = None,
+        cover_spec: Optional[Dict[str, Any]] = None,
+        cover_versions: Optional[List[Dict[str, Any]]] = None,
+        selected_cover_version: Optional[str] = None,
     ) -> bool:
         """
         更新历史记录
@@ -228,6 +395,7 @@ class HistoryService:
         record = self.get_record(record_id)
         if not record:
             return False
+        record = self._ensure_cover_fields(record)
 
         # 更新时间戳
         now = datetime.now().isoformat()
@@ -248,6 +416,47 @@ class HistoryService:
         # 更新缩略图
         if thumbnail is not None:
             record["thumbnail"] = thumbnail
+
+        # 更新封面结构化参数
+        if cover_spec is not None:
+            current_outline = record.get("outline") if isinstance(record.get("outline"), dict) else {}
+            record["cover_spec"] = self._normalize_cover_spec(cover_spec, current_outline, record.get("title", ""))
+
+        # 更新封面版本列表
+        if cover_versions is not None:
+            normalized_versions: List[Dict[str, Any]] = []
+            current_outline = record.get("outline") if isinstance(record.get("outline"), dict) else {}
+            for idx, version in enumerate(cover_versions):
+                if not isinstance(version, dict):
+                    continue
+                version_id = str(version.get("id") or f"v{idx + 1}")
+                version_cover_spec = self._normalize_cover_spec(
+                    version.get("cover_spec"), current_outline, record.get("title", "")
+                )
+                normalized_versions.append({
+                    "id": version_id,
+                    "name": version.get("name") or f"封面版本 {idx + 1}",
+                    "source": version.get("source") or "manual",
+                    "created_at": version.get("created_at") or now,
+                    "cover_spec": version_cover_spec,
+                    "task_id": version.get("task_id") or (record.get("images") or {}).get("task_id"),
+                    "image_filename": version.get("image_filename"),
+                })
+            record["cover_versions"] = normalized_versions
+
+        # 更新选中版本
+        if selected_cover_version is not None:
+            record["selected_cover_version"] = selected_cover_version
+
+        # 若已选版本存在，自动同步顶层 cover_spec 到选中版本
+        selected_id = record.get("selected_cover_version")
+        if selected_id and isinstance(record.get("cover_versions"), list):
+            selected_version = next(
+                (v for v in record["cover_versions"] if v.get("id") == selected_id),
+                None
+            )
+            if selected_version and isinstance(selected_version.get("cover_spec"), dict):
+                record["cover_spec"] = selected_version["cover_spec"]
 
         # 保存完整记录
         record_path = self._get_record_path(record_id)
