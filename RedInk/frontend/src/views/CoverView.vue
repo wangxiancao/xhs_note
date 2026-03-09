@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import {
@@ -151,8 +151,12 @@ const drafting = ref(false)
 const saving = ref(false)
 const error = ref('')
 const previewUrl = ref('')
+const isInitializing = ref(true)
 const selectedVersionId = ref<string>('')
 const coverVersions = ref<CoverVersion[]>([])
+
+let autoPreviewTimer: ReturnType<typeof setTimeout> | null = null
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const DEFAULT_SPEC: CoverSpec = {
   title: '未命名封面',
@@ -313,8 +317,9 @@ async function loadFromHistory() {
   }
 }
 
-async function renderPreviewImage() {
-  error.value = ''
+async function renderPreviewImage(showError = true) {
+  if (rendering.value) return
+  if (showError) error.value = ''
   rendering.value = true
   try {
     const ok = await ensureRecordId()
@@ -327,12 +332,16 @@ async function renderPreviewImage() {
       user_topic: store.topic
     })
     if (!result.success || !result.image_base64) {
-      error.value = result.error || '预览生成失败'
+      if (showError) {
+        error.value = result.error || '预览生成失败'
+      }
       return
     }
     previewUrl.value = `data:${result.mime_type || 'image/png'};base64,${result.image_base64}`
   } catch (e: any) {
-    error.value = e.message || '预览生成失败'
+    if (showError) {
+      error.value = e.message || '预览生成失败'
+    }
   } finally {
     rendering.value = false
   }
@@ -395,6 +404,24 @@ async function applyVersion(versionId: string) {
 }
 
 async function syncCoverToOutlineAndHistory(syncSelectedVersion: boolean) {
+  syncCoverToOutlineLocal()
+
+  if (store.recordId) {
+    const payload: Record<string, any> = {
+      outline: {
+        raw: store.outline.raw,
+        pages: store.outline.pages
+      },
+      cover_spec: coverSpec.value
+    }
+    if (syncSelectedVersion) {
+      payload.selected_cover_version = selectedVersionId.value || null
+    }
+    await updateHistory(store.recordId, payload)
+  }
+}
+
+function syncCoverToOutlineLocal() {
   let coverPage = store.outline.pages.find((page) => page.type === 'cover')
   if (!coverPage) {
     if (store.outline.pages.length === 0) {
@@ -408,17 +435,38 @@ async function syncCoverToOutlineAndHistory(syncSelectedVersion: boolean) {
 
   coverPage.content = coverSpecToPageContent(coverSpec.value)
   store.syncRawFromPages()
+}
 
-  if (store.recordId) {
-    await updateHistory(store.recordId, {
-      outline: {
-        raw: store.outline.raw,
-        pages: store.outline.pages
-      },
-      cover_spec: coverSpec.value,
-      selected_cover_version: syncSelectedVersion ? selectedVersionId.value || null : undefined
-    })
-  }
+async function persistCoverDraft() {
+  if (!store.recordId) return
+  await updateHistory(store.recordId, {
+    outline: {
+      raw: store.outline.raw,
+      pages: store.outline.pages
+    },
+    cover_spec: coverSpec.value
+  })
+}
+
+function scheduleAutoPreview() {
+  if (isInitializing.value || drafting.value || saving.value) return
+  if (autoPreviewTimer) clearTimeout(autoPreviewTimer)
+  autoPreviewTimer = setTimeout(() => {
+    renderPreviewImage(false)
+  }, 700)
+}
+
+function scheduleAutoSave() {
+  if (isInitializing.value || saving.value) return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(async () => {
+    try {
+      await ensureRecordId()
+      await persistCoverDraft()
+    } catch (e) {
+      console.warn('自动保存封面失败:', e)
+    }
+  }, 900)
 }
 
 async function saveAndContinue() {
@@ -472,6 +520,27 @@ onMounted(async () => {
   const ok = await ensureRecordId()
   if (!ok) return
   await loadFromHistory()
+  isInitializing.value = false
+  syncCoverToOutlineLocal()
+  if (!previewUrl.value) {
+    await renderPreviewImage(false)
+  }
+})
+
+watch(
+  coverSpec,
+  () => {
+    if (isInitializing.value) return
+    syncCoverToOutlineLocal()
+    scheduleAutoPreview()
+    scheduleAutoSave()
+  },
+  { deep: true }
+)
+
+onBeforeUnmount(() => {
+  if (autoPreviewTimer) clearTimeout(autoPreviewTimer)
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
 })
 </script>
 
