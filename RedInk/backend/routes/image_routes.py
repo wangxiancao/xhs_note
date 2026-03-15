@@ -14,7 +14,9 @@ import json
 import base64
 import logging
 from flask import Blueprint, request, jsonify, Response, send_file
+from backend.services.history import get_history_service
 from backend.services.image import get_image_service
+from backend.utils.outline_utils import filter_cover_pages, serialize_pages
 from .utils import log_request, log_error
 
 logger = logging.getLogger(__name__)
@@ -46,17 +48,19 @@ def create_image_blueprint():
         """
         try:
             data = request.get_json()
-            pages = data.get('pages')
+            pages = filter_cover_pages(data.get('pages'))
             task_id = data.get('task_id')
-            full_outline = data.get('full_outline', '')
+            record_id = data.get('record_id')
+            full_outline = serialize_pages(pages)
             user_topic = data.get('user_topic', '')
 
             # 解析 base64 格式的用户参考图片
             user_images = _parse_base64_images(data.get('user_images', []))
 
             log_request('/generate', {
-                'pages_count': len(pages) if pages else 0,
+                'pages_count': len(pages),
                 'task_id': task_id,
+                'record_id': record_id,
                 'user_topic': user_topic[:50] if user_topic else None,
                 'user_images': user_images
             })
@@ -70,13 +74,18 @@ def create_image_blueprint():
 
             logger.info(f"🖼️  开始图片生成任务: {task_id}, 共 {len(pages)} 页")
             image_service = get_image_service()
+            cover_reference = None
+            if record_id:
+                history_service = get_history_service()
+                cover_reference = history_service.get_selected_cover_image_bytes(record_id)
 
             def generate():
                 """SSE 事件生成器"""
                 for event in image_service.generate_images(
                     pages, task_id, full_outline,
                     user_images=user_images if user_images else None,
-                    user_topic=user_topic
+                    user_topic=user_topic,
+                    cover_reference_image=cover_reference,
                 ):
                     event_type = event["event"]
                     event_data = event["data"]

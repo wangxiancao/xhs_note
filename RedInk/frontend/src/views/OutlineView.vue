@@ -36,6 +36,7 @@
           <div class="page-info">
              <span class="page-number">P{{ idx + 1 }}</span>
              <span class="page-type" :class="page.type">{{ getPageTypeName(page.type) }}</span>
+             <span class="render-mode-badge" :class="getRenderModeClass(page.render_mode)">{{ getRenderModeName(page.render_mode) }}</span>
           </div>
           
           <div class="card-controls">
@@ -54,6 +55,38 @@
           placeholder="在此输入文案..."
           @input="store.updatePage(page.index, page.content)"
         />
+
+        <div class="render-mode-panel">
+          <label class="mode-label">渲染方式</label>
+          <select
+            class="mode-select"
+            :value="page.render_mode || 'ai'"
+            @change="updateRenderMode(page, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="ai">文生图</option>
+            <option value="latex">LaTeX 模板</option>
+            <option value="upload">用户上传图片</option>
+          </select>
+        </div>
+
+        <div v-if="page.render_mode === 'latex'" class="mode-hint">
+          当前页面会走模板化渲染链路，不调用文生图模型。
+        </div>
+
+        <div v-if="page.render_mode === 'upload'" class="upload-panel">
+          <div v-if="page.uploaded_image_task_id && page.uploaded_image_filename" class="upload-preview">
+            <img :src="getUploadedPreviewUrl(page)" :alt="`第 ${idx + 1} 页上传图`" />
+          </div>
+          <label class="upload-btn">
+            <input
+              type="file"
+              accept="image/*"
+              style="display: none;"
+              @change="onUploadPageImage(page, $event)"
+            />
+            {{ uploadingIndices.has(page.index) ? '上传中...' : (page.uploaded_image_filename ? '更换图片' : '上传图片') }}
+          </label>
+        </div>
         
         <div class="word-count">{{ page.content.length }} 字</div>
       </div>
@@ -75,7 +108,7 @@
 import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
-import { updateHistory, createHistory } from '../api'
+import { updateHistory, createHistory, getImageUrl, uploadPageImage, type Page } from '../api'
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -84,6 +117,7 @@ const dragOverIndex = ref<number | null>(null)
 const draggedIndex = ref<number | null>(null)
 // 保存状态指示
 const isSaving = ref(false)
+const uploadingIndices = ref<Set<number>>(new Set())
 
 const getPageTypeName = (type: string) => {
   const names = {
@@ -92,6 +126,21 @@ const getPageTypeName = (type: string) => {
     summary: '总结'
   }
   return names[type as keyof typeof names] || '内容'
+}
+
+const getRenderModeName = (mode?: string) => {
+  const names = {
+    ai: '文生图',
+    latex: 'LaTeX',
+    upload: '上传图'
+  }
+  return names[mode as keyof typeof names] || '文生图'
+}
+
+const getRenderModeClass = (mode?: string) => {
+  if (mode === 'latex') return 'latex'
+  if (mode === 'upload') return 'upload'
+  return 'ai'
 }
 
 // 拖拽逻辑
@@ -135,6 +184,14 @@ const goBack = () => {
 }
 
 const startGeneration = async () => {
+  const invalidUploadPage = store.outline.pages.find(
+    (page) => page.render_mode === 'upload' && (!page.uploaded_image_task_id || !page.uploaded_image_filename)
+  )
+  if (invalidUploadPage) {
+    alert(`第 ${invalidUploadPage.index + 1} 页已切换为“用户上传图片”，但还没有上传图片。`)
+    return
+  }
+
   // 如果有待保存的内容，先强制保存
   if (saveTimer !== null) {
     clearTimeout(saveTimer)
@@ -214,7 +271,7 @@ const checkAndCreateHistory = async () => {
   // 如果已经有 recordId，无需创建
   if (store.recordId) {
     console.log('已存在历史记录ID:', store.recordId)
-    return
+    return true
   }
 
   // 如果有大纲数据但没有 recordId，说明是异常情况，尝试创建
@@ -234,12 +291,58 @@ const checkAndCreateHistory = async () => {
       if (result.success && result.record_id) {
         store.setRecordId(result.record_id)
         console.log('历史记录创建成功，ID:', result.record_id)
+        return true
       } else {
         console.error('创建历史记录失败:', result.error)
       }
     } catch (error) {
       console.error('创建历史记录出错:', error)
     }
+  }
+
+  return false
+}
+
+const updateRenderMode = (page: Page, mode: string) => {
+  page.render_mode = mode === 'latex' || mode === 'upload' ? mode : 'ai'
+}
+
+const getUploadedPreviewUrl = (page: Page) => {
+  if (!page.uploaded_image_task_id || !page.uploaded_image_filename) return ''
+  return getImageUrl(page.uploaded_image_task_id, page.uploaded_image_filename, false)
+}
+
+const onUploadPageImage = async (page: Page, event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  target.value = ''
+  if (!file) return
+
+  const ok = await checkAndCreateHistory()
+  if (!ok || !store.recordId) {
+    alert('创建历史记录失败，暂时无法上传页面图片。')
+    return
+  }
+
+  uploadingIndices.value = new Set(uploadingIndices.value).add(page.index)
+  try {
+    const result = await uploadPageImage(store.recordId, file)
+    if (!result.success || !result.upload_task_id || !result.upload_filename) {
+      alert(result.error || '上传图片失败')
+      return
+    }
+
+    page.render_mode = 'upload'
+    page.uploaded_image_task_id = result.upload_task_id
+    page.uploaded_image_filename = result.upload_filename
+    await autoSaveOutline()
+  } catch (error) {
+    console.error('上传页面图片出错:', error)
+    alert('上传图片失败: ' + String(error))
+  } finally {
+    const nextUploading = new Set(uploadingIndices.value)
+    nextUploading.delete(page.index)
+    uploadingIndices.value = nextUploading
   }
 }
 
@@ -363,6 +466,28 @@ watch(
 .page-type.content { color: #8c8c8c; background: #f5f5f5; }
 .page-type.summary { color: #52C41A; background: #F6FFED; }
 
+.render-mode-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.render-mode-badge.ai {
+  color: #1677ff;
+  background: #e6f4ff;
+}
+
+.render-mode-badge.latex {
+  color: #7a4cff;
+  background: #f3edff;
+}
+
+.render-mode-badge.upload {
+  color: #d46b08;
+  background: #fff7e6;
+}
+
 .card-controls {
   display: flex;
   gap: 8px;
@@ -404,6 +529,70 @@ watch(
 
 .textarea-paper:focus {
   outline: none;
+}
+
+.render-mode-panel {
+  margin-top: 10px;
+}
+
+.mode-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-bottom: 6px;
+}
+
+.mode-select {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.mode-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #7a4cff;
+  background: #f7f3ff;
+  border: 1px solid #e4d7ff;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.upload-panel {
+  margin-top: 10px;
+}
+
+.upload-preview {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #eceff3;
+  background: #f6f7f9;
+  margin-bottom: 10px;
+}
+
+.upload-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #ad6800;
+  border: 1px solid #ffd591;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .word-count {

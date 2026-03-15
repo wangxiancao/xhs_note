@@ -6,6 +6,9 @@ export interface Page {
   index: number
   type: 'cover' | 'content' | 'summary'
   content: string
+  render_mode?: 'ai' | 'latex' | 'upload'
+  uploaded_image_task_id?: string | null
+  uploaded_image_filename?: string | null
 }
 
 export interface OutlineResponse {
@@ -67,6 +70,32 @@ export async function generateOutline(
 export function getImageUrl(taskId: string, filename: string, thumbnail: boolean = true): string {
   const thumbParam = thumbnail ? '?thumbnail=true' : '?thumbnail=false'
   return `${API_BASE_URL}/images/${taskId}/${filename}${thumbParam}`
+}
+
+export async function uploadPageImage(
+  recordId: string,
+  file: File
+): Promise<{
+  success: boolean
+  upload_task_id?: string
+  upload_filename?: string
+  image_url?: string
+  error?: string
+}> {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const response = await axios.post(
+    `${API_BASE_URL}/history/${recordId}/page-upload`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }
+  )
+
+  return response.data
 }
 
 // 重新生成图片（即使成功的也可以重新生成）
@@ -720,6 +749,7 @@ export async function getHistoryStats(): Promise<{
 export async function generateImagesPost(
   pages: Page[],
   taskId: string | null,
+  recordId: string | null,
   fullOutline: string,
   onProgress: (event: ProgressEvent) => void,
   onComplete: (event: ProgressEvent) => void,
@@ -753,6 +783,7 @@ export async function generateImagesPost(
       body: JSON.stringify({
         pages,
         task_id: taskId,
+        record_id: recordId,
         full_outline: fullOutline,
         user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
         user_topic: userTopic || ''

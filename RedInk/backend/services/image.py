@@ -67,6 +67,7 @@ class ImageService:
         self.prompt_template = self._load_prompt_template()
         self.prompt_template_short = self._load_prompt_template(short=True)
         self.cover_latex_prompt_template = self._load_cover_prompt_template()
+        self.page_latex_prompt_template = self._load_page_latex_prompt_template()
         self.cover_text_client, self.cover_text_model = self._build_cover_text_client()
 
         # 历史记录根目录
@@ -108,6 +109,27 @@ class ImageService:
         if not os.path.exists(prompt_path):
             return (
                 "请基于以下内容生成可直接编译的 xelatex + ctex 封面 TeX 模板。\n"
+                "仅输出 TeX 代码，不要解释。\n\n"
+                "页面内容:\n{page_content}\n\n"
+                "用户主题:\n{user_topic}\n\n"
+                "完整大纲:\n{full_outline}\n\n"
+                "第 {attempt} 次生成。\n"
+                "上一次编译错误:\n{compile_feedback}\n\n"
+                "上一次 TeX:\n{previous_tex}\n"
+            )
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def _load_page_latex_prompt_template(self) -> str:
+        """加载内容页 LaTeX 模板提示词"""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "prompts",
+            "page_latex_prompt.txt"
+        )
+        if not os.path.exists(prompt_path):
+            return (
+                "请根据页面内容生成可直接编译的 xelatex + ctex 内容页 TeX 模板。\n"
                 "仅输出 TeX 代码，不要解释。\n\n"
                 "页面内容:\n{page_content}\n\n"
                 "用户主题:\n{user_topic}\n\n"
@@ -469,6 +491,52 @@ class ImageService:
 
         raise RuntimeError(f"封面 TeX 连续编译失败：{compile_feedback}")
 
+    def _generate_page_via_latex(
+        self,
+        page_content: str,
+        full_outline: str,
+        user_topic: str,
+    ) -> bytes:
+        """通过文本模型生成内容页 TeX，编译失败时自动重试修复"""
+        compile_feedback = "无"
+        previous_tex = "无"
+
+        for attempt in range(1, self.COVER_TEX_MAX_RETRY + 1):
+            prompt = self.page_latex_prompt_template.format(
+                page_content=page_content,
+                full_outline=full_outline or "未提供",
+                user_topic=user_topic or "未提供",
+                attempt=attempt,
+                compile_feedback=compile_feedback,
+                previous_tex=previous_tex,
+            )
+
+            response_text = self.cover_text_client.generate_text(
+                prompt=prompt,
+                model=self.cover_text_model,
+                temperature=0.35,
+                max_output_tokens=4096,
+                thinking={"type": "disabled"} if str(self.cover_text_model).lower().startswith("glm") else None,
+            )
+            tex_code = self._extract_tex_block(response_text)
+            if not tex_code:
+                compile_feedback = "模型未返回 TeX 代码。"
+                previous_tex = "无"
+                continue
+
+            ok, png_bytes, compile_error = self._compile_cover_tex_to_png(tex_code)
+            if ok and png_bytes:
+                if self._is_image_visually_blank(png_bytes):
+                    compile_feedback = "内容页渲染结果为空白或近似空白，请增加有效文字层级、装饰元素和明显的背景层次。"
+                    previous_tex = tex_code[:8000]
+                    continue
+                return png_bytes
+
+            compile_feedback = compile_error or "未知错误"
+            previous_tex = tex_code[:8000]
+
+        raise RuntimeError(f"内容页 TeX 连续编译失败：{compile_feedback}")
+
     def render_cover_png_bytes(
         self,
         cover_spec: Dict[str, Any],
@@ -579,9 +647,10 @@ class ImageService:
         index = page["index"]
         page_type = page["type"]
         page_content = page["content"]
+        render_mode = str(page.get("render_mode") or "ai").strip().lower()
 
         try:
-            logger.debug(f"生成图片 [{index}]: type={page_type}")
+            logger.debug(f"生成图片 [{index}]: type={page_type}, render_mode={render_mode}")
 
             # 封面专用链路：文本模型生成 TeX -> 本地编译 PNG
             if page_type == "cover":
@@ -594,6 +663,35 @@ class ImageService:
                 filename = f"{index}.png"
                 self._save_image(cover_png, filename, self.current_task_dir)
                 logger.info(f"✅ 封面 [{index}] LaTeX 渲染成功: {filename}")
+                return (index, True, filename, None)
+
+            if render_mode == "upload":
+                upload_task_id = page.get("uploaded_image_task_id")
+                upload_filename = page.get("uploaded_image_filename")
+                if not upload_task_id or not upload_filename:
+                    raise ValueError("上传图片页面缺少素材文件，请先上传图片。")
+
+                upload_path = os.path.join(self.history_root_dir, str(upload_task_id), str(upload_filename))
+                if not os.path.exists(upload_path):
+                    raise ValueError(f"上传图片文件不存在：{upload_path}")
+
+                with open(upload_path, "rb") as f:
+                    image_data = f.read()
+
+                filename = f"{index}.png"
+                self._save_image(image_data, filename, self.current_task_dir)
+                logger.info(f"✅ 上传图片页 [{index}] 已复制到任务目录: {filename}")
+                return (index, True, filename, None)
+
+            if render_mode == "latex":
+                latex_png = self._generate_page_via_latex(
+                    page_content=page_content,
+                    full_outline=full_outline,
+                    user_topic=user_topic,
+                )
+                filename = f"{index}.png"
+                self._save_image(latex_png, filename, self.current_task_dir)
+                logger.info(f"✅ LaTeX 模板页 [{index}] 渲染成功: {filename}")
                 return (index, True, filename, None)
 
             # 根据配置选择模板（短 prompt 或完整 prompt）
@@ -667,7 +765,8 @@ class ImageService:
         task_id: str = None,
         full_outline: str = "",
         user_images: Optional[List[bytes]] = None,
-        user_topic: str = ""
+        user_topic: str = "",
+        cover_reference_image: Optional[bytes] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         生成图片（生成器，支持 SSE 流式返回）
@@ -694,9 +793,9 @@ class ImageService:
         logger.debug(f"任务目录: {self.current_task_dir}")
 
         total = len(pages)
-        generated_images = []
+        generated_images: Dict[int, str] = {}
         failed_pages = []
-        cover_image_data = None
+        cover_image_data = compress_image(cover_reference_image, max_size_kb=200) if cover_reference_image else None
 
         # 压缩用户上传的参考图到200KB以内（减少内存和传输开销）
         compressed_user_images = None
@@ -708,7 +807,7 @@ class ImageService:
             "pages": pages,
             "generated": {},
             "failed": {},
-            "cover_image": None,
+            "cover_image": cover_image_data,
             "full_outline": full_outline,
             "user_images": compressed_user_images,
             "user_topic": user_topic
@@ -723,11 +822,6 @@ class ImageService:
                 cover_page = page
             else:
                 other_pages.append(page)
-
-        # 如果没有封面，使用第一页作为封面
-        if cover_page is None and len(pages) > 0:
-            cover_page = pages[0]
-            other_pages = pages[1:]
 
         if cover_page:
             # 发送封面生成进度
@@ -750,7 +844,7 @@ class ImageService:
             )
 
             if success:
-                generated_images.append(filename)
+                generated_images[index] = filename
                 self._task_states[task_id]["generated"][index] = filename
 
                 # 读取封面图片作为参考，并立即压缩到200KB以内
@@ -816,7 +910,7 @@ class ImageService:
                             0,  # retry_count
                             full_outline,  # 传入完整大纲
                             compressed_user_images,  # 用户上传的参考图片（已压缩）
-                            user_topic  # 用户原始输入
+                                user_topic  # 用户原始输入
                         ): page
                         for page in other_pages
                     }
@@ -841,7 +935,7 @@ class ImageService:
                             index, success, filename, error = future.result()
 
                             if success:
-                                generated_images.append(filename)
+                                generated_images[index] = filename
                                 self._task_states[task_id]["generated"][index] = filename
 
                                 yield {
@@ -921,7 +1015,7 @@ class ImageService:
                     )
 
                     if success:
-                        generated_images.append(filename)
+                        generated_images[index] = filename
                         self._task_states[task_id]["generated"][index] = filename
 
                         yield {
@@ -949,12 +1043,13 @@ class ImageService:
                         }
 
         # ==================== 完成 ====================
+        ordered_images = [generated_images.get(page["index"], "") for page in pages]
         yield {
             "event": "finish",
             "data": {
                 "success": len(failed_pages) == 0,
                 "task_id": task_id,
-                "images": generated_images,
+                "images": ordered_images,
                 "total": total,
                 "completed": len(generated_images),
                 "failed": len(failed_pages),
@@ -1000,15 +1095,6 @@ class ImageService:
             if not user_topic:
                 user_topic = task_state.get("user_topic", "")
             user_images = task_state.get("user_images")
-
-        # 如果任务状态中没有封面图，尝试从文件系统加载
-        if use_reference and reference_image is None:
-            cover_path = os.path.join(self.current_task_dir, "0.png")
-            if os.path.exists(cover_path):
-                with open(cover_path, "rb") as f:
-                    cover_data = f.read()
-                # 压缩封面图到 200KB
-                reference_image = compress_image(cover_data, max_size_kb=200)
 
         index, success, filename, error = self._generate_single_image(
             page,
@@ -1074,8 +1160,12 @@ class ImageService:
         # 并发重试
         # 从任务状态中获取完整大纲
         full_outline = ""
+        user_images = None
+        user_topic = ""
         if task_id in self._task_states:
             full_outline = self._task_states[task_id].get("full_outline", "")
+            user_images = self._task_states[task_id].get("user_images")
+            user_topic = self._task_states[task_id].get("user_topic", "")
 
         with ThreadPoolExecutor(max_workers=self.MAX_CONCURRENT) as executor:
             future_to_page = {
@@ -1085,7 +1175,9 @@ class ImageService:
                     task_id,
                     reference_image,
                     0,  # retry_count
-                    full_outline  # 传入完整大纲
+                    full_outline,  # 传入完整大纲
+                    user_images,
+                    user_topic
                 ): page
                 for page in pages
             }

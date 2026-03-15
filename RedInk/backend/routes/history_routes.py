@@ -123,6 +123,54 @@ def create_history_blueprint():
                 "error": f"获取历史记录列表失败。\n错误详情: {error_msg}"
             }), 500
 
+    @history_bp.route('/history/<record_id>/page-upload', methods=['POST'])
+    def upload_page_image(record_id):
+        """
+        上传页面素材图
+
+        路径参数：
+        - record_id: 历史记录 ID
+
+        表单参数：
+        - image: 图片文件（必填）
+        """
+        try:
+            if 'image' not in request.files:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：image 不能为空。"
+                }), 400
+
+            file = request.files['image']
+            if not file or not file.filename:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：未检测到有效图片文件。"
+                }), 400
+
+            image_bytes = file.read()
+            if not image_bytes:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：上传图片内容为空。"
+                }), 400
+
+            history_service = get_history_service()
+            result = history_service.save_page_uploaded_image(record_id, image_bytes)
+
+            return jsonify({
+                "success": True,
+                "upload_task_id": result["task_id"],
+                "upload_filename": result["filename"],
+                "image_url": result["image_url"],
+            }), 200
+        except Exception as e:
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"上传页面图片失败。\n错误详情: {error_msg}"
+            }), 500
+
     @history_bp.route('/history/<record_id>', methods=['GET'])
     def get_history(record_id):
         """

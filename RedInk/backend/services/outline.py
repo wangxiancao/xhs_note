@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from backend.utils.text_client import get_text_chat_client
 from backend.utils.secret_resolver import resolve_api_key
+from backend.utils.outline_utils import filter_cover_pages, serialize_pages
 
 logger = logging.getLogger(__name__)
 
@@ -181,12 +182,13 @@ class OutlineService:
             )
 
             logger.debug(f"API 返回文本长度: {len(outline_text)} 字符")
-            pages = self._parse_outline(outline_text)
+            pages = filter_cover_pages(self._parse_outline(outline_text))
+            sanitized_outline_text = serialize_pages(pages)
             logger.info(f"大纲解析完成，共 {len(pages)} 页")
 
             return {
                 "success": True,
-                "outline": outline_text,
+                "outline": sanitized_outline_text,
                 "pages": pages,
                 "has_images": images is not None and len(images) > 0
             }

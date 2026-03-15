@@ -7,9 +7,15 @@
 
 import os
 import json
+import io
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+
+from PIL import Image, ImageOps
+
+from backend.utils.image_compressor import compress_image
+from backend.utils.outline_utils import normalize_outline_payload
 
 
 class RecordStatus:
@@ -22,6 +28,8 @@ class RecordStatus:
 
 
 class HistoryService:
+    TARGET_IMAGE_SIZE = (1242, 1660)
+
     def __init__(self):
         """
         初始化历史记录服务
@@ -84,6 +92,72 @@ class HistoryService:
         """
         return os.path.join(self.history_dir, f"{record_id}.json")
 
+    def _get_upload_task_id(self, record_id: str) -> str:
+        return f"upload_{record_id.replace('-', '')}"
+
+    def _normalize_uploaded_image(self, image_bytes: bytes) -> bytes:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            normalized = ImageOps.fit(
+                img.convert("RGB"),
+                self.TARGET_IMAGE_SIZE,
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+            output = io.BytesIO()
+            normalized.save(output, format="PNG", optimize=True)
+            return output.getvalue()
+
+    def save_page_uploaded_image(self, record_id: str, image_bytes: bytes) -> Dict[str, str]:
+        record = self.get_record(record_id)
+        if not record:
+            raise ValueError(f"历史记录不存在：{record_id}")
+
+        task_id = self._get_upload_task_id(record_id)
+        task_dir = os.path.join(self.history_dir, task_id)
+        os.makedirs(task_dir, exist_ok=True)
+
+        filename = f"{uuid.uuid4().hex[:12]}.png"
+        normalized = self._normalize_uploaded_image(image_bytes)
+        filepath = os.path.join(task_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(normalized)
+
+        thumbnail_path = os.path.join(task_dir, f"thumb_{filename}")
+        with open(thumbnail_path, "wb") as f:
+            f.write(compress_image(normalized, max_size_kb=50))
+
+        return {
+            "task_id": task_id,
+            "filename": filename,
+            "image_url": f"/api/images/{task_id}/{filename}?thumbnail=false",
+        }
+
+    def get_selected_cover_image_bytes(self, record_id: str) -> Optional[bytes]:
+        record = self.get_record(record_id)
+        if not record:
+            return None
+
+        selected_version_id = (record.get("selected_cover_version") or "").strip()
+        versions = record.get("cover_versions") or []
+        selected_version = next(
+            (item for item in versions if isinstance(item, dict) and item.get("id") == selected_version_id),
+            None,
+        )
+        if not selected_version:
+            return None
+
+        task_id = (selected_version.get("task_id") or "").strip()
+        filename = (selected_version.get("image_filename") or "").strip()
+        if not task_id or not filename:
+            return None
+
+        filepath = os.path.join(self.history_dir, task_id, filename)
+        if not os.path.exists(filepath):
+            return None
+
+        with open(filepath, "rb") as f:
+            return f.read()
+
     def _extract_cover_field(self, text: str, prefixes: List[str]) -> str:
         """从封面文本中按前缀提取字段值"""
         if not text:
@@ -113,9 +187,6 @@ class HistoryService:
             if page.get("type") == "cover":
                 cover_content = page.get("content", "") or ""
                 break
-        if not cover_content and pages:
-            cover_content = pages[0].get("content", "") or ""
-
         title = self._extract_cover_field(cover_content, ["标题：", "主标题：", "标题:", "主标题:"])
         subtitle = self._extract_cover_field(cover_content, ["副标题：", "副标题:"])
         tag = self._extract_cover_field(cover_content, ["标签：", "标签:", "Tag：", "TAG："])
@@ -259,6 +330,7 @@ class HistoryService:
         # 生成唯一记录 ID
         record_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
+        outline = normalize_outline_payload(outline)
         normalized_cover_spec = self._normalize_cover_spec(cover_spec, outline, topic)
         initial_cover_version_id = "v1"
 
@@ -403,6 +475,7 @@ class HistoryService:
 
         # 更新大纲内容（支持修改大纲）
         if outline is not None:
+            outline = normalize_outline_payload(outline)
             record["outline"] = outline
 
         # 更新图片信息
@@ -520,6 +593,15 @@ class HistoryService:
                     print(f"已删除任务目录: {task_dir}")
                 except Exception as e:
                     print(f"删除任务目录失败: {task_dir}, {e}")
+
+        upload_task_dir = os.path.join(self.history_dir, self._get_upload_task_id(record_id))
+        if os.path.exists(upload_task_dir) and os.path.isdir(upload_task_dir):
+            try:
+                import shutil
+                shutil.rmtree(upload_task_dir)
+                print(f"已删除上传素材目录: {upload_task_dir}")
+            except Exception as e:
+                print(f"删除上传素材目录失败: {upload_task_dir}, {e}")
 
         # 删除记录 JSON 文件
         record_path = self._get_record_path(record_id)

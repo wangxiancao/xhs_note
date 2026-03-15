@@ -1,95 +1,99 @@
 # RedInk-glm
 
-基于 `RedInk` 的本地小红书图文生产项目，主链路为：
+本项目是基于 `RedInk` 改造的本地小红书图文生产工具，主链路为：
 
 1. 输入主题
-2. 生成大纲与文案（GLM-4.7）
-3. 生成图片（GLM-Image）
-4. 结果确认
-5. 通过 `xiaohongshu-mcp` 发布
+2. 生成大纲与文案
+3. 生成封面与配图
+4. 确认结果
+5. 发布到小红书
 
-## 执行环境（固定）
+## 快速启动
 
-- Conda 环境：`/root/soft/anaconda3/envs/videolingo`
-- Python：`/root/soft/anaconda3/envs/videolingo/bin/python`
-
-说明：后端运行和测试统一使用上述 Python。
-
-## 快速启动（本地部署）
-
-### 1. 启动 xiaohongshu-mcp（外部独立服务）
-
-仓库链接：<https://github.com/xpzouying/xiaohongshu-mcp>
-
-说明：`xiaohongshu-mcp` 不由本项目管理，请按其仓库文档单独部署并启动。
-
-检查登录状态：
+推荐直接使用启动脚本：
 
 ```bash
-curl http://127.0.0.1:18060/api/v1/login/status
+cd /root/notebook_repo/RedInk-glm
+bash scripts/start_local_stack.sh start
 ```
 
-### 2. 启动后端（Flask）
+启动脚本路径：
+
+`/root/notebook_repo/RedInk-glm/scripts/start_local_stack.sh`
+
+## 启动前准备
+
+1. 确认 `xiaohongshu-mcp` 已单独启动。
+2. 确认前端依赖已安装过一次：
 
 ```bash
-cd RedInk
-/root/soft/anaconda3/envs/videolingo/bin/python -m backend.app
-```
-
-默认端口：`http://127.0.0.1:12398`
-
-### 3. 启动前端（Vite）
-
-```bash
-cd RedInk/frontend
+cd /root/notebook_repo/RedInk-glm/RedInk/frontend
 npm install
-npm run dev
 ```
 
-默认端口：`http://127.0.0.1:5173`
-
-## 部署后快速命令行启动
-
-前提：`xiaohongshu-mcp` 已在外部独立启动。
+3. 后端固定使用以下 Python：
 
 ```bash
-(cd RedInk && nohup /root/soft/anaconda3/envs/videolingo/bin/python -m backend.app >/tmp/redink-backend.log 2>&1 &)
-(cd RedInk/frontend && nohup npm run dev -- --host 0.0.0.0 --port 5173 >/tmp/redink-frontend.log 2>&1 &)
+/root/soft/anaconda3/envs/videolingo/bin/python
 ```
 
-快速检查：
+说明：当前脚本只管理 `RedInk` 前端和后端，不负责启动或停止 `xiaohongshu-mcp`。
+
+## 常用命令
+
+启动前后端：
 
 ```bash
-curl http://127.0.0.1:12398/health
-curl http://127.0.0.1:18060/api/v1/login/status
+bash scripts/start_local_stack.sh start
 ```
 
-## 主流程使用
+查看状态：
 
-1. 打开首页输入主题。
-2. 在大纲页编辑页面内容。
-3. 进入生成页等待图片完成。
-4. 在结果页生成标题/文案/标签并确认。
-5. 点击“发布到小红书”触发发布。
+```bash
+bash scripts/start_local_stack.sh status
+```
 
-补充：
+查看最近日志：
 
-- 历史记录页仍保留（`/history`），可查看、续跑和下载已生成任务。
+```bash
+bash scripts/start_local_stack.sh logs
+```
 
-## 核心接口
+停止前后端：
 
-- `POST /api/outline` 生成大纲
-- `POST /api/content` 生成标题/文案/标签
-- `POST /api/generate` 生成图片（SSE）
-- `GET/POST/PUT/DELETE /api/history*` 历史记录管理
-- `GET /api/publish/status` 检查登录态
-- `POST /api/publish/from-result` 从生成结果发布
+```bash
+bash scripts/start_local_stack.sh stop
+```
 
-## 输出目录
+查看帮助：
 
-- 生成图片：`RedInk/history/{task_id}/`
-- 发布中转图：`images/publish/{task_id_timestamp}/`
+```bash
+bash scripts/start_local_stack.sh --help
+```
 
-## 文档
+## 服务地址
 
-- RedInk 子项目说明：`RedInk/README.md`
+- 前端：`http://127.0.0.1:5173`
+- 后端健康检查：`http://127.0.0.1:12398/health`
+- MCP 登录状态：`http://127.0.0.1:18060/api/v1/login/status`
+
+## 日志与 PID 文件
+
+- 后端日志：`/tmp/redink-backend.log`
+- 前端日志：`/tmp/redink-frontend.log`
+- 后端 PID：`/tmp/redink-backend.pid`
+- 前端 PID：`/tmp/redink-frontend.pid`
+
+## 使用流程
+
+1. 打开前端首页输入主题。
+2. 在大纲页编辑内容。
+3. 在封面页确认封面版本。
+4. 进入生成页等待配图完成。
+5. 在结果页确认标题、文案、标签并发布。
+
+## 相关目录
+
+- 项目主代码：`RedInk/`
+- 生成图片目录：`RedInk/history/{task_id}/`
+- 发布中转目录：`images/publish/{task_id_timestamp}/`

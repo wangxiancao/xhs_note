@@ -16,6 +16,7 @@
  */
 import { defineStore } from 'pinia'
 import type { Page } from '../api'
+import { pagesToRaw, sanitizeOutline } from '../utils/outline'
 
 /**
  * 生成的图片信息
@@ -121,6 +122,10 @@ function saveState(state: GeneratorState) {
 export const useGeneratorStore = defineStore('generator', {
   state: (): GeneratorState => {
     const saved = loadState()
+    const normalizedOutline = sanitizeOutline(
+      saved.outline?.raw || '',
+      saved.outline?.pages || []
+    )
     return {
       // 当前阶段
       stage: saved.stage || 'input',
@@ -129,10 +134,7 @@ export const useGeneratorStore = defineStore('generator', {
       topic: saved.topic || '',
 
       // 大纲数据
-      outline: saved.outline || {
-        raw: '',
-        pages: []
-      },
+      outline: normalizedOutline,
 
       // 图片生成进度
       progress: saved.progress || {
@@ -184,8 +186,9 @@ export const useGeneratorStore = defineStore('generator', {
      * @param pages 解析后的页面数组
      */
     setOutline(raw: string, pages: Page[]) {
-      this.outline.raw = raw
-      this.outline.pages = pages
+      const normalizedOutline = sanitizeOutline(raw, pages)
+      this.outline.raw = normalizedOutline.raw
+      this.outline.pages = normalizedOutline.pages
       this.stage = 'outline'
       this.outlineStatus = 'done'  // 设置大纲为已完成状态
     },
@@ -216,9 +219,9 @@ export const useGeneratorStore = defineStore('generator', {
      * 用于保持 raw 和 pages 的数据同步
      */
     syncRawFromPages() {
-      this.outline.raw = this.outline.pages
-        .map(page => page.content)
-        .join('\n\n<page>\n\n')
+      const normalizedOutline = sanitizeOutline(this.outline.raw, this.outline.pages)
+      this.outline.pages = normalizedOutline.pages
+      this.outline.raw = pagesToRaw(this.outline.pages)
     },
 
     /**
@@ -244,7 +247,10 @@ export const useGeneratorStore = defineStore('generator', {
       const newPage: Page = {
         index: this.outline.pages.length,
         type,
-        content
+        content,
+        render_mode: 'ai',
+        uploaded_image_task_id: null,
+        uploaded_image_filename: null
       }
       this.outline.pages.push(newPage)
       // 同步更新 raw 文本
@@ -261,7 +267,10 @@ export const useGeneratorStore = defineStore('generator', {
       const newPage: Page = {
         index: afterIndex + 1,
         type,
-        content
+        content,
+        render_mode: 'ai',
+        uploaded_image_task_id: null,
+        uploaded_image_filename: null
       }
       this.outline.pages.splice(afterIndex + 1, 0, newPage)
       // 重新索引所有页面

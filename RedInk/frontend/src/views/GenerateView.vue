@@ -253,6 +253,7 @@ onMounted(async () => {
   generateImagesPost(
     store.outline.pages,
     null,
+    store.recordId,
     store.outline.raw,  // 传入完整大纲文本
     // onProgress
     (event) => {
@@ -279,16 +280,16 @@ onMounted(async () => {
       if (store.recordId) {
         try {
           // 收集所有生成的图片文件名
-          const generatedImages = event.images.filter(img => img !== null)
+          const generatedImages = event.images.map((img) => img || '')
 
           // 确定状态
           let status = 'completed'
           if (hasFailedImages.value) {
-            status = generatedImages.length > 0 ? 'partial' : 'draft'
+            status = generatedImages.some((img) => Boolean(img)) ? 'partial' : 'draft'
           }
 
           // 获取封面图作为缩略图（只保存文件名，不是完整URL）
-          const thumbnail = generatedImages.length > 0 ? generatedImages[0] : null
+          const thumbnail = generatedImages.find((img) => Boolean(img)) || null
 
           await updateHistory(store.recordId, {
             images: {

@@ -229,7 +229,7 @@ function extractField(content: string, prefixes: string[]): string {
 }
 
 function deriveSpecFromOutline(): CoverSpec {
-  const coverPage = store.outline.pages.find(page => page.type === 'cover') || store.outline.pages[0]
+  const coverPage = store.outline.pages.find(page => page.type === 'cover')
   const content = coverPage?.content || ''
 
   const hashtags = content
@@ -245,19 +245,6 @@ function deriveSpecFromOutline(): CoverSpec {
     top_badge: extractField(content, ['顶部标签：', '胶囊标签：']) || DEFAULT_SPEC.top_badge,
     hashtags: hashtags.length > 0 ? hashtags : DEFAULT_SPEC.hashtags
   })
-}
-
-function coverSpecToPageContent(spec: CoverSpec): string {
-  const lines = ['[封面]', `标题：${spec.title}`]
-  if (spec.subtitle?.trim()) lines.push(`副标题：${spec.subtitle.trim()}`)
-  if (spec.tag?.trim()) lines.push(`标签：${spec.tag.trim()}`)
-  if (spec.top_badge?.trim()) lines.push(`顶部标签：${spec.top_badge.trim()}`)
-  for (const hashtag of spec.hashtags.slice(0, 3)) {
-    const text = (hashtag || '').trim()
-    if (!text) continue
-    lines.push(text.startsWith('#') ? text : `#${text}`)
-  }
-  return lines.join('\n')
 }
 
 function getPos(section: 'title' | 'subtitle' | 'tag' | 'top_badge', key: 'x' | 'y' | 'width') {
@@ -397,15 +384,13 @@ async function applyVersion(versionId: string) {
     if (result.image_url) {
       previewUrl.value = `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
     }
-    await syncCoverToOutlineAndHistory(false)
+    await syncCoverToHistory(false)
   } catch (e: any) {
     error.value = e.message || '版本切换失败'
   }
 }
 
-async function syncCoverToOutlineAndHistory(syncSelectedVersion: boolean) {
-  syncCoverToOutlineLocal()
-
+async function syncCoverToHistory(syncSelectedVersion: boolean) {
   if (store.recordId) {
     const payload: Record<string, any> = {
       outline: {
@@ -419,22 +404,6 @@ async function syncCoverToOutlineAndHistory(syncSelectedVersion: boolean) {
     }
     await updateHistory(store.recordId, payload)
   }
-}
-
-function syncCoverToOutlineLocal() {
-  let coverPage = store.outline.pages.find((page) => page.type === 'cover')
-  if (!coverPage) {
-    if (store.outline.pages.length === 0) {
-      store.addPage('cover', '')
-      coverPage = store.outline.pages[0]
-    } else {
-      coverPage = store.outline.pages[0]
-      coverPage.type = 'cover'
-    }
-  }
-
-  coverPage.content = coverSpecToPageContent(coverSpec.value)
-  store.syncRawFromPages()
 }
 
 async function persistCoverDraft() {
@@ -499,7 +468,7 @@ async function saveAndContinue() {
     }
 
     await loadFromHistory()
-    await syncCoverToOutlineAndHistory(true)
+    await syncCoverToHistory(true)
     router.push('/generate')
   } catch (e: any) {
     error.value = e.message || '封面保存失败'
@@ -521,7 +490,6 @@ onMounted(async () => {
   if (!ok) return
   await loadFromHistory()
   isInitializing.value = false
-  syncCoverToOutlineLocal()
   if (!previewUrl.value) {
     await renderPreviewImage(false)
   }
@@ -531,7 +499,6 @@ watch(
   coverSpec,
   () => {
     if (isInitializing.value) return
-    syncCoverToOutlineLocal()
     scheduleAutoPreview()
     scheduleAutoSave()
   },
