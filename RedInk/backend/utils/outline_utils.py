@@ -31,6 +31,7 @@ def filter_cover_pages(pages: Any) -> List[Dict[str, Any]]:
             "type": page_type,
             "content": str(page.get("content") or ""),
             "render_mode": render_mode,
+            "latex_code": str(page.get("latex_code") or ""),
             "uploaded_image_task_id": page.get("uploaded_image_task_id") or None,
             "uploaded_image_filename": page.get("uploaded_image_filename") or None,
         })

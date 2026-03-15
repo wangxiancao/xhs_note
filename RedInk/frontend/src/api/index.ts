@@ -7,6 +7,7 @@ export interface Page {
   type: 'cover' | 'content' | 'summary'
   content: string
   render_mode?: 'ai' | 'latex' | 'upload'
+  latex_code?: string
   uploaded_image_task_id?: string | null
   uploaded_image_filename?: string | null
 }
@@ -232,6 +233,7 @@ export interface HistoryDetail {
   status: string
   thumbnail: string | null
   cover_spec?: CoverSpec
+  cover_latex_code?: string
   cover_versions?: CoverVersion[]
   selected_cover_version?: string | null
 }
@@ -253,6 +255,7 @@ export interface CoverVersion {
   source: string
   created_at: string
   cover_spec: CoverSpec
+  latex_code?: string
   task_id?: string | null
   image_filename?: string | null
 }
@@ -282,7 +285,14 @@ export interface CoverSelectResponse {
   record_id?: string
   selected_cover_version?: string
   cover_spec?: CoverSpec
+  latex_code?: string
   image_url?: string | null
+  error?: string
+}
+
+export interface LatexDraftResponse {
+  success: boolean
+  latex_code?: string
   error?: string
 }
 
@@ -305,6 +315,7 @@ export interface UpdateHistoryParams {
   status?: string
   thumbnail?: string
   cover_spec?: CoverSpec
+  cover_latex_code?: string
   cover_versions?: CoverVersion[]
   selected_cover_version?: string | null
 }
@@ -564,6 +575,7 @@ export async function updateHistory(
 export async function previewCover(
   data: {
     record_id?: string
+    latex_code?: string
     cover_spec?: CoverSpec
     full_outline?: string
     user_topic?: string
@@ -579,6 +591,7 @@ export async function previewCover(
 export async function regenerateCover(
   data: {
     record_id: string
+    latex_code?: string
     cover_spec?: CoverSpec
     version_name?: string
     source?: string
@@ -601,6 +614,29 @@ export async function selectCoverVersion(
   }
 ): Promise<CoverSelectResponse> {
   const response = await axios.post<CoverSelectResponse>(`${API_BASE_URL}/cover/select`, data)
+  return response.data
+}
+
+export async function generateLatexDraft(
+  data: {
+    record_id?: string
+    target: 'cover' | 'page'
+    page_index?: number
+    page_content?: string
+    full_outline?: string
+    user_topic?: string
+  }
+): Promise<LatexDraftResponse> {
+  const response = await axios.post<LatexDraftResponse>(`${API_BASE_URL}/latex/draft`, data)
+  return response.data
+}
+
+export async function previewLatex(
+  latex_code: string
+): Promise<CoverPreviewResponse> {
+  const response = await axios.post<CoverPreviewResponse>(`${API_BASE_URL}/latex/preview`, {
+    latex_code
+  })
   return response.data
 }
 

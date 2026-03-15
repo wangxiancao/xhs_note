@@ -51,7 +51,7 @@ def create_image_blueprint():
             pages = filter_cover_pages(data.get('pages'))
             task_id = data.get('task_id')
             record_id = data.get('record_id')
-            full_outline = serialize_pages(pages)
+            full_outline = data.get('full_outline') or serialize_pages(pages)
             user_topic = data.get('user_topic', '')
 
             # 解析 base64 格式的用户参考图片

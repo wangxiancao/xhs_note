@@ -41,6 +41,126 @@ def create_cover_blueprint():
     """创建封面路由蓝图"""
     cover_bp = Blueprint("cover", __name__)
 
+    @cover_bp.route("/latex/draft", methods=["POST"])
+    def generate_latex_draft():
+        """
+        生成 LaTeX 草稿代码
+
+        请求体：
+        - record_id: 历史记录 ID（可选）
+        - target: cover | page
+        - page_index: 页面 index（target=page 时必填）
+        - page_content: 页面文本（可选）
+        - full_outline: 完整大纲文本（可选）
+        - user_topic: 用户主题（可选）
+        """
+        try:
+            data = request.get_json() or {}
+            record_id = data.get("record_id")
+            target = str(data.get("target") or "cover").strip()
+            page_index = data.get("page_index")
+            page_content = data.get("page_content", "")
+            full_outline = data.get("full_outline", "")
+            user_topic = data.get("user_topic", "")
+
+            history_service = get_history_service()
+            record = None
+            if record_id:
+                record = history_service.get_record(record_id)
+                if not record:
+                    return jsonify({
+                        "success": False,
+                        "error": f"历史记录不存在：{record_id}"
+                    }), 404
+                if not full_outline:
+                    full_outline = (record.get("outline") or {}).get("raw", "")
+                if not user_topic:
+                    user_topic = record.get("title", "")
+
+            image_service = get_image_service()
+
+            if target == "cover":
+                if not page_content:
+                    cover_spec = (record or {}).get("cover_spec")
+                    page_content = image_service.build_cover_page_content(cover_spec, user_topic=user_topic or "")
+                latex_code = image_service.generate_cover_latex_code(
+                    page_content=page_content,
+                    full_outline=full_outline or "",
+                    user_topic=user_topic or "",
+                )
+            elif target == "page":
+                if page_index is None and page_index != 0:
+                    return jsonify({
+                        "success": False,
+                        "error": "参数错误：page_index 不能为空。"
+                    }), 400
+                if not page_content and record:
+                    pages = ((record.get("outline") or {}).get("pages") or [])
+                    target_page = next((page for page in pages if page.get("index") == page_index), None)
+                    if target_page:
+                        page_content = target_page.get("content", "")
+                if not page_content:
+                    return jsonify({
+                        "success": False,
+                        "error": "参数错误：page_content 不能为空。"
+                    }), 400
+                latex_code = image_service.generate_page_latex_code(
+                    page_content=page_content,
+                    full_outline=full_outline or "",
+                    user_topic=user_topic or "",
+                )
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": f"不支持的 target: {target}"
+                }), 400
+
+            return jsonify({
+                "success": True,
+                "latex_code": latex_code,
+            }), 200
+        except Exception as e:
+            log_error("/latex/draft", e)
+            return jsonify({
+                "success": False,
+                "error": f"LaTeX 草稿生成失败。\n错误详情: {str(e)}"
+            }), 500
+
+    @cover_bp.route("/latex/preview", methods=["POST"])
+    def preview_latex():
+        """
+        编译并渲染 LaTeX 代码预览
+
+        请求体：
+        - latex_code: LaTeX 源码（必填）
+        """
+        try:
+            data = request.get_json() or {}
+            latex_code = data.get("latex_code", "")
+            if not latex_code or not str(latex_code).strip():
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：latex_code 不能为空。"
+                }), 400
+
+            image_service = get_image_service()
+            image_data = image_service.render_latex_png_bytes(str(latex_code))
+            image_b64 = _encode_png_base64(image_data)
+
+            return jsonify({
+                "success": True,
+                "image_base64": image_b64,
+                "mime_type": "image/png",
+                "width": 1242,
+                "height": 1660,
+            }), 200
+        except Exception as e:
+            log_error("/latex/preview", e)
+            return jsonify({
+                "success": False,
+                "error": f"LaTeX 预览生成失败。\n错误详情: {str(e)}"
+            }), 500
+
     @cover_bp.route("/cover/preview", methods=["POST"])
     def preview_cover():
         """
@@ -48,6 +168,7 @@ def create_cover_blueprint():
 
         请求体：
         - record_id: 历史记录 ID（可选）
+        - latex_code: 封面 LaTeX 代码（可选，优先级高于 cover_spec）
         - cover_spec: 封面结构化参数（可选，优先级高于 record）
         - full_outline: 完整大纲文本（可选）
         - user_topic: 用户主题（可选）
@@ -55,6 +176,7 @@ def create_cover_blueprint():
         try:
             data = request.get_json() or {}
             record_id = data.get("record_id")
+            latex_code = data.get("latex_code")
             cover_spec = data.get("cover_spec")
             full_outline = data.get("full_outline", "")
             user_topic = data.get("user_topic", "")
@@ -67,6 +189,8 @@ def create_cover_blueprint():
                         "success": False,
                         "error": f"历史记录不存在：{record_id}"
                     }), 404
+                if not latex_code:
+                    latex_code = record.get("cover_latex_code")
                 if not cover_spec:
                     cover_spec = record.get("cover_spec")
                 if not full_outline:
@@ -74,24 +198,34 @@ def create_cover_blueprint():
                 if not user_topic:
                     user_topic = record.get("title", "")
 
-            if not isinstance(cover_spec, dict):
+            if latex_code and str(latex_code).strip():
+                image_service = get_image_service()
+                image_data = image_service.render_latex_png_bytes(str(latex_code))
+            else:
+                if not isinstance(cover_spec, dict):
+                    return jsonify({
+                        "success": False,
+                        "error": "参数错误：cover_spec 不能为空且必须为对象。"
+                    }), 400
+
+                log_request("/cover/preview", {
+                    "record_id": record_id,
+                    "has_cover_spec": True,
+                    "outline_length": len(full_outline or ""),
+                })
+
+                image_service = get_image_service()
+                image_data = image_service.render_cover_png_bytes(
+                    cover_spec=cover_spec,
+                    full_outline=full_outline or "",
+                    user_topic=user_topic or "",
+                )
+
+            if not image_data:
                 return jsonify({
                     "success": False,
-                    "error": "参数错误：cover_spec 不能为空且必须为对象。"
+                    "error": "封面预览生成失败。"
                 }), 400
-
-            log_request("/cover/preview", {
-                "record_id": record_id,
-                "has_cover_spec": True,
-                "outline_length": len(full_outline or ""),
-            })
-
-            image_service = get_image_service()
-            image_data = image_service.render_cover_png_bytes(
-                cover_spec=cover_spec,
-                full_outline=full_outline or "",
-                user_topic=user_topic or "",
-            )
             image_b64 = _encode_png_base64(image_data)
 
             return jsonify({
@@ -115,6 +249,7 @@ def create_cover_blueprint():
 
         请求体：
         - record_id: 历史记录 ID（必填）
+        - latex_code: 封面 LaTeX 源码（可选）
         - cover_spec: 封面结构化参数（可选）
         - version_name: 版本名称（可选）
         - source: 版本来源（可选，默认 manual）
@@ -139,11 +274,12 @@ def create_cover_blueprint():
                     "error": f"历史记录不存在：{record_id}"
                 }), 404
 
+            latex_code = str(data.get("latex_code") or record.get("cover_latex_code") or "").strip()
             cover_spec = data.get("cover_spec") or record.get("cover_spec")
-            if not isinstance(cover_spec, dict):
+            if not latex_code and not isinstance(cover_spec, dict):
                 return jsonify({
                     "success": False,
-                    "error": "参数错误：cover_spec 不能为空且必须为对象。"
+                    "error": "参数错误：latex_code 或 cover_spec 至少需要提供一个。"
                 }), 400
 
             full_outline = data.get("full_outline") or (record.get("outline") or {}).get("raw", "")
@@ -178,11 +314,14 @@ def create_cover_blueprint():
             })
 
             image_service = get_image_service()
-            image_data = image_service.render_cover_png_bytes(
-                cover_spec=cover_spec,
-                full_outline=full_outline or "",
-                user_topic=user_topic or "",
-            )
+            if latex_code:
+                image_data = image_service.render_latex_png_bytes(latex_code)
+            else:
+                image_data = image_service.render_cover_png_bytes(
+                    cover_spec=cover_spec,
+                    full_outline=full_outline or "",
+                    user_topic=user_topic or "",
+                )
             image_service.save_cover_png(task_id=task_id, filename=filename, image_data=image_data)
 
             new_version = {
@@ -191,6 +330,7 @@ def create_cover_blueprint():
                 "source": source,
                 "created_at": datetime.now().isoformat(),
                 "cover_spec": cover_spec,
+                "latex_code": latex_code,
                 "task_id": task_id,
                 "image_filename": filename,
             }
@@ -209,6 +349,7 @@ def create_cover_blueprint():
                 images=images,
                 thumbnail=thumbnail,
                 cover_spec=cover_spec,
+                cover_latex_code=latex_code,
                 cover_versions=versions,
                 selected_cover_version=selected_version,
             )
@@ -270,6 +411,7 @@ def create_cover_blueprint():
                 }), 404
 
             selected_cover_spec = selected.get("cover_spec")
+            selected_latex_code = str(selected.get("latex_code") or "")
             thumbnail = selected.get("image_filename") or record.get("thumbnail")
 
             log_request("/cover/select", {
@@ -280,6 +422,7 @@ def create_cover_blueprint():
             success = history_service.update_record(
                 record_id,
                 cover_spec=selected_cover_spec,
+                cover_latex_code=selected_latex_code,
                 selected_cover_version=version_id,
                 thumbnail=thumbnail,
             )
@@ -300,6 +443,7 @@ def create_cover_blueprint():
                 "record_id": record_id,
                 "selected_cover_version": version_id,
                 "cover_spec": selected_cover_spec,
+                "latex_code": selected_latex_code,
                 "image_url": image_url,
             }), 200
         except Exception as e:
@@ -310,4 +454,3 @@ def create_cover_blueprint():
             }), 500
 
     return cover_bp
-

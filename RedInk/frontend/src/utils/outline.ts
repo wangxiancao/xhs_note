@@ -8,6 +8,7 @@ export function stripCoverPages(pages: Page[] = []): Page[] {
       type: page.type === 'summary' ? 'summary' : 'content',
       content: page.content,
       render_mode: page.render_mode === 'latex' || page.render_mode === 'upload' ? page.render_mode : 'ai',
+      latex_code: page.latex_code || '',
       uploaded_image_task_id: page.uploaded_image_task_id || null,
       uploaded_image_filename: page.uploaded_image_filename || null
     }))

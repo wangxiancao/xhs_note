@@ -1,147 +1,130 @@
 <template>
-  <div class="container cover-container">
+  <div class="container latex-workbench">
     <div class="page-header">
       <div>
-        <h1 class="page-title">封面创作台</h1>
-        <p class="page-subtitle">先确定封面，再继续正文配图生成</p>
+        <h1 class="page-title">LaTeX 模板工作台</h1>
+        <p class="page-subtitle">左侧切换模板，中间编辑 LaTeX，右侧手动渲染预览</p>
       </div>
-      <div style="display: flex; gap: 10px;">
+      <div class="header-actions">
         <button class="btn" @click="router.push('/outline')" style="border:1px solid var(--border-color)">
           返回大纲
         </button>
         <button class="btn btn-primary" @click="saveAndContinue" :disabled="saving">
-          {{ saving ? '保存中...' : '保存封面并继续' }}
+          {{ saving ? '保存中...' : '保存并继续' }}
         </button>
       </div>
     </div>
 
-    <div class="cover-grid">
-      <div class="card form-card">
-        <h3 class="section-title">文案编辑</h3>
-        <div class="field">
-          <label>主标题</label>
-          <textarea v-model="coverSpec.title" rows="2" />
-        </div>
-        <div class="field">
-          <label>副标题</label>
-          <input v-model="coverSpec.subtitle" type="text" />
-        </div>
-        <div class="field">
-          <label>Tag</label>
-          <input v-model="coverSpec.tag" type="text" />
-        </div>
-        <div class="field">
-          <label>顶部胶囊</label>
-          <input v-model="coverSpec.top_badge" type="text" />
-        </div>
+    <div class="workbench-grid">
+      <aside class="card template-sidebar">
+        <div class="sidebar-title">模板预览</div>
+        <button
+          v-for="entry in templateEntries"
+          :key="entry.key"
+          class="template-thumb"
+          :class="{ active: selectedTemplateKey === entry.key }"
+          @click="selectedTemplateKey = entry.key"
+        >
+          <div class="template-thumb-image">
+            <img v-if="entry.previewUrl" :src="entry.previewUrl" :alt="entry.label" />
+            <div v-else class="template-thumb-placeholder">{{ entry.shortLabel }}</div>
+          </div>
+          <div class="template-thumb-meta">
+            <div class="template-thumb-title">{{ entry.label }}</div>
+            <div class="template-thumb-subtitle">{{ entry.description }}</div>
+          </div>
+        </button>
+      </aside>
 
-        <h3 class="section-title">Hashtag</h3>
-        <div class="field" v-for="(tag, idx) in coverSpec.hashtags.slice(0, 3)" :key="idx">
-          <label>第 {{ idx + 1 }} 行</label>
-          <input :value="tag" type="text" @input="setHashtag(idx, ($event.target as HTMLInputElement).value)" />
-        </div>
-
-        <h3 class="section-title">文字坐标</h3>
-        <div class="pos-grid">
-          <div class="pos-item">
-            <label>标题 X</label>
-            <input :value="getPos('title', 'x')" type="number" @input="setPos('title', 'x', ($event.target as HTMLInputElement).value)" />
+      <section class="card editor-panel">
+        <div class="editor-header">
+          <div>
+            <h3 class="section-title">{{ currentTemplate?.label || '未选择模板' }}</h3>
+            <p class="editor-note">
+              {{ currentTemplate?.description || '请选择一个模板进行编辑。' }}
+            </p>
           </div>
-          <div class="pos-item">
-            <label>标题 Y</label>
-            <input :value="getPos('title', 'y')" type="number" @input="setPos('title', 'y', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>标题宽度</label>
-            <input :value="getPos('title', 'width')" type="number" @input="setPos('title', 'width', ($event.target as HTMLInputElement).value)" />
-          </div>
-
-          <div class="pos-item">
-            <label>副标题 X</label>
-            <input :value="getPos('subtitle', 'x')" type="number" @input="setPos('subtitle', 'x', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>副标题 Y</label>
-            <input :value="getPos('subtitle', 'y')" type="number" @input="setPos('subtitle', 'y', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>副标题宽度</label>
-            <input :value="getPos('subtitle', 'width')" type="number" @input="setPos('subtitle', 'width', ($event.target as HTMLInputElement).value)" />
-          </div>
-
-          <div class="pos-item">
-            <label>Tag X</label>
-            <input :value="getPos('tag', 'x')" type="number" @input="setPos('tag', 'x', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>Tag Y</label>
-            <input :value="getPos('tag', 'y')" type="number" @input="setPos('tag', 'y', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>顶部标签 X</label>
-            <input :value="getPos('top_badge', 'x')" type="number" @input="setPos('top_badge', 'x', ($event.target as HTMLInputElement).value)" />
-          </div>
-          <div class="pos-item">
-            <label>顶部标签 Y</label>
-            <input :value="getPos('top_badge', 'y')" type="number" @input="setPos('top_badge', 'y', ($event.target as HTMLInputElement).value)" />
+          <div class="editor-actions">
+            <button class="btn" @click="generateCurrentDraft" :disabled="drafting || rendering || saving">
+              {{ drafting ? '生成中...' : 'AI 生成模板' }}
+            </button>
+            <button class="btn btn-primary" @click="renderCurrentTemplate" :disabled="rendering || drafting || saving">
+              {{ rendering ? '渲染中...' : '渲染预览' }}
+            </button>
           </div>
         </div>
 
-        <div class="actions">
-          <button class="btn btn-primary" @click="generateAiDraft" :disabled="drafting || rendering || saving">
-            {{ drafting ? '生成中...' : 'AI 生成草稿' }}
-          </button>
-          <button class="btn" @click="renderPreviewImage" :disabled="rendering || drafting || saving">
-            {{ rendering ? '渲染中...' : '渲染预览' }}
-          </button>
+        <div v-if="currentTemplate?.kind === 'page'" class="page-content-box">
+          <div class="page-content-label">页面文案</div>
+          <div class="page-content-text">{{ currentTemplate.page?.content || '未提供页面文案' }}</div>
         </div>
 
+        <textarea
+          v-model="currentLatexCode"
+          class="latex-editor"
+          placeholder="% 在这里输入或生成 LaTeX 模板代码"
+          spellcheck="false"
+        />
+
+        <div v-if="currentTemplate?.kind === 'cover' && coverVersions.length > 0" class="version-section">
+          <div class="version-title">封面历史版本</div>
+          <div class="version-list">
+            <button
+              v-for="version in coverVersions"
+              :key="version.id"
+              class="version-chip"
+              :class="{ active: selectedVersionId === version.id }"
+              @click="applyVersion(version.id)"
+            >
+              {{ version.name }} ({{ version.id }})
+            </button>
+          </div>
+        </div>
+
+        <div class="save-tip">代码会自动保存到历史记录，渲染改为手动触发。</div>
         <div v-if="error" class="error-box">{{ error }}</div>
-      </div>
+      </section>
 
-      <div class="card preview-card">
+      <section class="card preview-panel">
         <div class="preview-header">
-          <h3 class="section-title">封面预览</h3>
-          <div class="meta">
-            <span>版本：{{ selectedVersionId || '未选中' }}</span>
-          </div>
+          <h3 class="section-title">渲染结果</h3>
+          <span class="preview-meta">{{ currentTemplate?.label || '未选择模板' }}</span>
         </div>
 
         <div class="preview-box">
-          <img v-if="previewUrl" :src="previewUrl" alt="cover preview" />
-          <div v-else class="preview-empty">点击“渲染预览”或“AI 生成草稿”</div>
+          <img v-if="currentPreviewUrl" :src="currentPreviewUrl" :alt="currentTemplate?.label || 'preview'" />
+          <div v-else class="preview-empty">点击“渲染预览”查看当前 LaTeX 输出</div>
         </div>
-
-        <div v-if="coverVersions.length > 0" class="version-list">
-          <button
-            v-for="version in coverVersions"
-            :key="version.id"
-            class="version-chip"
-            :class="{ active: selectedVersionId === version.id }"
-            @click="applyVersion(version.id)"
-          >
-            {{ version.name }} ({{ version.id }})
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGeneratorStore } from '../stores/generator'
 import {
-  type CoverSpec,
-  type CoverVersion,
   createHistory,
+  generateLatexDraft,
   getHistory,
-  previewCover,
+  previewLatex,
   regenerateCover,
   selectCoverVersion,
+  type CoverVersion,
+  type Page,
   updateHistory
 } from '../api'
+
+type TemplateEntry = {
+  key: string
+  kind: 'cover' | 'page'
+  label: string
+  shortLabel: string
+  description: string
+  page?: Page
+  previewUrl?: string
+}
 
 const router = useRouter()
 const store = useGeneratorStore()
@@ -150,123 +133,14 @@ const rendering = ref(false)
 const drafting = ref(false)
 const saving = ref(false)
 const error = ref('')
-const previewUrl = ref('')
 const isInitializing = ref(true)
+const selectedTemplateKey = ref('cover')
 const selectedVersionId = ref<string>('')
 const coverVersions = ref<CoverVersion[]>([])
+const coverLatexCode = ref('')
+const templatePreviewUrls = ref<Record<string, string>>({})
 
-let autoPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
-
-const DEFAULT_SPEC: CoverSpec = {
-  title: '未命名封面',
-  subtitle: '把生活调成静音模式',
-  tag: '@ 夏日氛围感',
-  hashtags: ['#治愈系生活', '#夏日碎片收集', '#慢生活'],
-  top_badge: '建议收藏',
-  footer_words: ['慢下来', '去生活', '爱自己'],
-  positions: {
-    title: { x: 98, y: 1040, anchor: 'west', width: 860 },
-    subtitle: { x: 98, y: 900, anchor: 'west', width: 760 },
-    tag: { x: 110, y: 620, anchor: 'west' },
-    hashtags: [
-      { x: 110, y: 500, anchor: 'west' },
-      { x: 110, y: 430, anchor: 'west' },
-      { x: 110, y: 360, anchor: 'west' }
-    ],
-    top_badge: { x: 960, y: 1540, anchor: 'center' },
-    footer_words: [
-      { x: 220, y: 70, anchor: 'center' },
-      { x: 620, y: 70, anchor: 'center' },
-      { x: 1020, y: 70, anchor: 'center' }
-    ]
-  },
-  palette: {
-    background: ['#9FC5E8', '#A9CCE8', '#C7E0F4', '#D6EAF8'],
-    text_primary: '#1E4E79',
-    text_secondary: '#5D8AA8',
-    card_fill: '#EAF4FB',
-    badge_bg: '#1E4E79',
-    badge_text: '#EAF4FB'
-  }
-}
-
-const coverSpec = ref<CoverSpec>(cloneSpec(DEFAULT_SPEC))
-
-function cloneSpec(spec: CoverSpec): CoverSpec {
-  return JSON.parse(JSON.stringify(spec))
-}
-
-function normalizeSpec(input?: Partial<CoverSpec> | null): CoverSpec {
-  const merged = {
-    ...cloneSpec(DEFAULT_SPEC),
-    ...(input || {})
-  } as CoverSpec
-
-  if (!Array.isArray(merged.hashtags)) merged.hashtags = [...DEFAULT_SPEC.hashtags]
-  if (!Array.isArray(merged.footer_words)) merged.footer_words = [...DEFAULT_SPEC.footer_words]
-  while (merged.hashtags.length < 3) merged.hashtags.push('')
-  merged.hashtags = merged.hashtags.slice(0, 3)
-  while (merged.footer_words.length < 3) merged.footer_words.push('')
-  merged.footer_words = merged.footer_words.slice(0, 3)
-  if (!merged.positions || typeof merged.positions !== 'object') merged.positions = cloneSpec(DEFAULT_SPEC).positions
-  if (!merged.palette || typeof merged.palette !== 'object') merged.palette = cloneSpec(DEFAULT_SPEC).palette
-
-  return merged
-}
-
-function extractField(content: string, prefixes: string[]): string {
-  for (const rawLine of (content || '').split('\n')) {
-    const line = rawLine.trim()
-    for (const prefix of prefixes) {
-      if (line.startsWith(prefix)) {
-        if (line.includes('：')) return line.split('：', 2)[1].trim()
-        if (line.includes(':')) return line.split(':', 2)[1].trim()
-      }
-    }
-  }
-  return ''
-}
-
-function deriveSpecFromOutline(): CoverSpec {
-  const coverPage = store.outline.pages.find(page => page.type === 'cover')
-  const content = coverPage?.content || ''
-
-  const hashtags = content
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('#'))
-    .slice(0, 3)
-
-  return normalizeSpec({
-    title: extractField(content, ['标题：', '主标题：', '标题:', '主标题:']) || store.topic || DEFAULT_SPEC.title,
-    subtitle: extractField(content, ['副标题：', '副标题:']) || DEFAULT_SPEC.subtitle,
-    tag: extractField(content, ['标签：', '标签:', 'Tag：', 'TAG：']) || DEFAULT_SPEC.tag,
-    top_badge: extractField(content, ['顶部标签：', '胶囊标签：']) || DEFAULT_SPEC.top_badge,
-    hashtags: hashtags.length > 0 ? hashtags : DEFAULT_SPEC.hashtags
-  })
-}
-
-function getPos(section: 'title' | 'subtitle' | 'tag' | 'top_badge', key: 'x' | 'y' | 'width') {
-  const pos = (coverSpec.value.positions?.[section] || {}) as Record<string, any>
-  return typeof pos[key] === 'number' ? pos[key] : ''
-}
-
-function setPos(section: 'title' | 'subtitle' | 'tag' | 'top_badge', key: 'x' | 'y' | 'width', value: string) {
-  const parsed = Number(value)
-  if (!coverSpec.value.positions || typeof coverSpec.value.positions !== 'object') {
-    coverSpec.value.positions = {}
-  }
-  if (!coverSpec.value.positions[section] || typeof coverSpec.value.positions[section] !== 'object') {
-    coverSpec.value.positions[section] = {}
-  }
-  coverSpec.value.positions[section][key] = Number.isFinite(parsed) ? parsed : value
-}
-
-function setHashtag(index: number, value: string) {
-  while (coverSpec.value.hashtags.length < 3) coverSpec.value.hashtags.push('')
-  coverSpec.value.hashtags[index] = value
-}
 
 async function ensureRecordId(): Promise<boolean> {
   if (store.recordId) return true
@@ -276,8 +150,7 @@ async function ensureRecordId(): Promise<boolean> {
       raw: store.outline.raw,
       pages: store.outline.pages
     },
-    store.taskId || undefined,
-    coverSpec.value
+    store.taskId || undefined
   )
   if (!result.success || !result.record_id) {
     error.value = result.error || '创建历史记录失败'
@@ -287,79 +160,196 @@ async function ensureRecordId(): Promise<boolean> {
   return true
 }
 
+function getTemplateKey(page: Page) {
+  return `page:${page.index}`
+}
+
+const latexPages = computed(() => {
+  return store.outline.pages.filter((page) => page.render_mode === 'latex')
+})
+
+const templateEntries = computed<TemplateEntry[]>(() => {
+  const entries: TemplateEntry[] = [
+    {
+      key: 'cover',
+      kind: 'cover',
+      label: '封面',
+      shortLabel: '封面',
+      description: '封面 LaTeX 模板',
+      previewUrl: templatePreviewUrls.value.cover
+    }
+  ]
+
+  latexPages.value.forEach((page) => {
+    entries.push({
+      key: getTemplateKey(page),
+      kind: 'page',
+      label: `P${page.index + 1}`,
+      shortLabel: `P${page.index + 1}`,
+      description: '正文 LaTeX 模板',
+      page,
+      previewUrl: templatePreviewUrls.value[getTemplateKey(page)]
+    })
+  })
+
+  return entries
+})
+
+const currentTemplate = computed(() => {
+  return templateEntries.value.find((entry) => entry.key === selectedTemplateKey.value) || templateEntries.value[0] || null
+})
+
+const currentPreviewUrl = computed(() => {
+  return currentTemplate.value?.previewUrl || ''
+})
+
+const currentLatexCode = computed({
+  get() {
+    if (!currentTemplate.value) return ''
+    if (currentTemplate.value.kind === 'cover') {
+      return coverLatexCode.value
+    }
+    return currentTemplate.value.page?.latex_code || ''
+  },
+  set(value: string) {
+    if (!currentTemplate.value) return
+    if (currentTemplate.value.kind === 'cover') {
+      coverLatexCode.value = value
+      return
+    }
+    const page = currentTemplate.value.page
+    if (page) {
+      page.latex_code = value
+    }
+  }
+})
+
+function ensureSelectedTemplateValid() {
+  if (!templateEntries.value.some((entry) => entry.key === selectedTemplateKey.value)) {
+    selectedTemplateKey.value = templateEntries.value[0]?.key || 'cover'
+  }
+}
+
 async function loadFromHistory() {
   if (!store.recordId) return
   const res = await getHistory(store.recordId)
   if (!res.success || !res.record) return
 
-  coverSpec.value = normalizeSpec(res.record.cover_spec as CoverSpec)
+  store.setOutline(res.record.outline.raw, res.record.outline.pages)
+  store.startCoverEditing()
+
+  coverLatexCode.value = res.record.cover_latex_code || ''
   coverVersions.value = Array.isArray(res.record.cover_versions) ? res.record.cover_versions : []
   selectedVersionId.value = res.record.selected_cover_version || ''
 
+  const nextPreviewUrls: Record<string, string> = {}
   if (selectedVersionId.value) {
     const selected = coverVersions.value.find((item) => item.id === selectedVersionId.value)
     if (selected?.task_id && selected?.image_filename) {
-      previewUrl.value = `/api/images/${selected.task_id}/${selected.image_filename}?thumbnail=false&t=${Date.now()}`
+      nextPreviewUrls.cover = `/api/images/${selected.task_id}/${selected.image_filename}?thumbnail=false&t=${Date.now()}`
+      if (!coverLatexCode.value) {
+        coverLatexCode.value = selected.latex_code || ''
+      }
     }
   }
+
+  if (res.record.images.task_id && Array.isArray(res.record.images.generated)) {
+    res.record.outline.pages
+      .filter((page) => page.render_mode === 'latex')
+      .forEach((page) => {
+        const filename = res.record?.images.generated?.[page.index]
+        if (filename) {
+          nextPreviewUrls[getTemplateKey(page)] = `/api/images/${res.record!.images.task_id}/${filename}?thumbnail=false&t=${Date.now()}`
+        }
+      })
+  }
+
+  templatePreviewUrls.value = {
+    ...templatePreviewUrls.value,
+    ...nextPreviewUrls
+  }
+
+  ensureSelectedTemplateValid()
 }
 
-async function renderPreviewImage(showError = true) {
-  if (rendering.value) return
-  if (showError) error.value = ''
+async function persistLatexDrafts() {
+  if (!store.recordId) return
+  await updateHistory(store.recordId, {
+    outline: {
+      raw: store.outline.raw,
+      pages: store.outline.pages
+    },
+    cover_latex_code: coverLatexCode.value
+  })
+}
+
+function scheduleAutoSave() {
+  if (isInitializing.value || saving.value) return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(async () => {
+    try {
+      await ensureRecordId()
+      await persistLatexDrafts()
+    } catch (e) {
+      console.warn('自动保存 LaTeX 代码失败:', e)
+    }
+  }, 500)
+}
+
+async function renderCurrentTemplate() {
+  error.value = ''
+  const latexCode = currentLatexCode.value.trim()
+  if (!latexCode) {
+    error.value = '当前模板还没有 LaTeX 代码，请先手写或点击“AI 生成模板”。'
+    return
+  }
+
   rendering.value = true
   try {
-    const ok = await ensureRecordId()
-    if (!ok || !store.recordId) return
-
-    const result = await previewCover({
-      record_id: store.recordId,
-      cover_spec: coverSpec.value,
-      full_outline: store.outline.raw,
-      user_topic: store.topic
-    })
+    const result = await previewLatex(latexCode)
     if (!result.success || !result.image_base64) {
-      if (showError) {
-        error.value = result.error || '预览生成失败'
-      }
+      error.value = result.error || '预览生成失败'
       return
     }
-    previewUrl.value = `data:${result.mime_type || 'image/png'};base64,${result.image_base64}`
-  } catch (e: any) {
-    if (showError) {
-      error.value = e.message || '预览生成失败'
+
+    if (currentTemplate.value) {
+      templatePreviewUrls.value = {
+        ...templatePreviewUrls.value,
+        [currentTemplate.value.key]: `data:${result.mime_type || 'image/png'};base64,${result.image_base64}`
+      }
     }
+  } catch (e: any) {
+    error.value = e.message || '预览生成失败'
   } finally {
     rendering.value = false
   }
 }
 
-async function generateAiDraft() {
+async function generateCurrentDraft() {
   error.value = ''
   drafting.value = true
   try {
     const ok = await ensureRecordId()
-    if (!ok || !store.recordId) return
+    if (!ok || !store.recordId || !currentTemplate.value) return
 
-    const result = await regenerateCover({
+    const result = await generateLatexDraft({
       record_id: store.recordId,
-      cover_spec: coverSpec.value,
-      version_name: 'AI草稿',
-      source: 'ai_draft',
-      set_selected: false,
+      target: currentTemplate.value.kind,
+      page_index: currentTemplate.value.page?.index,
+      page_content: currentTemplate.value.page?.content || '',
       full_outline: store.outline.raw,
       user_topic: store.topic
     })
-    if (!result.success) {
-      error.value = result.error || 'AI 草稿生成失败'
+
+    if (!result.success || !result.latex_code) {
+      error.value = result.error || 'LaTeX 草稿生成失败'
       return
     }
-    if (result.image_url) {
-      previewUrl.value = `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
-    }
-    await loadFromHistory()
+
+    currentLatexCode.value = result.latex_code
+    await persistLatexDrafts()
   } catch (e: any) {
-    error.value = e.message || 'AI 草稿生成失败'
+    error.value = e.message || 'LaTeX 草稿生成失败'
   } finally {
     drafting.value = false
   }
@@ -377,65 +367,19 @@ async function applyVersion(versionId: string) {
       error.value = result.error || '版本切换失败'
       return
     }
+
     selectedVersionId.value = versionId
-    if (result.cover_spec) {
-      coverSpec.value = normalizeSpec(result.cover_spec)
-    }
+    coverLatexCode.value = result.latex_code || ''
     if (result.image_url) {
-      previewUrl.value = `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
+      templatePreviewUrls.value = {
+        ...templatePreviewUrls.value,
+        cover: `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
+      }
     }
-    await syncCoverToHistory(false)
+    await persistLatexDrafts()
   } catch (e: any) {
     error.value = e.message || '版本切换失败'
   }
-}
-
-async function syncCoverToHistory(syncSelectedVersion: boolean) {
-  if (store.recordId) {
-    const payload: Record<string, any> = {
-      outline: {
-        raw: store.outline.raw,
-        pages: store.outline.pages
-      },
-      cover_spec: coverSpec.value
-    }
-    if (syncSelectedVersion) {
-      payload.selected_cover_version = selectedVersionId.value || null
-    }
-    await updateHistory(store.recordId, payload)
-  }
-}
-
-async function persistCoverDraft() {
-  if (!store.recordId) return
-  await updateHistory(store.recordId, {
-    outline: {
-      raw: store.outline.raw,
-      pages: store.outline.pages
-    },
-    cover_spec: coverSpec.value
-  })
-}
-
-function scheduleAutoPreview() {
-  if (isInitializing.value || drafting.value || saving.value) return
-  if (autoPreviewTimer) clearTimeout(autoPreviewTimer)
-  autoPreviewTimer = setTimeout(() => {
-    renderPreviewImage(false)
-  }, 700)
-}
-
-function scheduleAutoSave() {
-  if (isInitializing.value || saving.value) return
-  if (autoSaveTimer) clearTimeout(autoSaveTimer)
-  autoSaveTimer = setTimeout(async () => {
-    try {
-      await ensureRecordId()
-      await persistCoverDraft()
-    } catch (e) {
-      console.warn('自动保存封面失败:', e)
-    }
-  }, 900)
 }
 
 async function saveAndContinue() {
@@ -445,33 +389,48 @@ async function saveAndContinue() {
     const ok = await ensureRecordId()
     if (!ok || !store.recordId) return
 
-    const result = await regenerateCover({
-      record_id: store.recordId,
-      cover_spec: coverSpec.value,
-      version_name: '封面定稿',
-      source: 'manual',
-      set_selected: true,
-      full_outline: store.outline.raw,
-      user_topic: store.topic
-    })
-    if (!result.success) {
-      error.value = result.error || '封面保存失败'
+    await persistLatexDrafts()
+
+    const selectedVersion = coverVersions.value.find((item) => item.id === selectedVersionId.value)
+    const hasExistingCoverImage = Boolean(selectedVersion?.task_id && selectedVersion?.image_filename)
+    const latexCode = coverLatexCode.value.trim()
+
+    if (latexCode) {
+      const result = await regenerateCover({
+        record_id: store.recordId,
+        latex_code: latexCode,
+        version_name: '封面定稿',
+        source: 'manual_latex',
+        set_selected: true,
+        full_outline: store.outline.raw,
+        user_topic: store.topic
+      })
+
+      if (!result.success) {
+        error.value = result.error || '封面保存失败'
+        return
+      }
+
+      if (result.task_id) {
+        store.taskId = result.task_id
+      }
+      selectedVersionId.value = result.selected_cover_version || result.version_id || ''
+      if (result.image_url) {
+        templatePreviewUrls.value = {
+          ...templatePreviewUrls.value,
+          cover: `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
+        }
+      }
+
+      await loadFromHistory()
+    } else if (!hasExistingCoverImage) {
+      error.value = '请先为封面生成或编写 LaTeX 模板，并至少渲染保存出一个封面版本。'
       return
     }
 
-    if (result.task_id) {
-      store.taskId = result.task_id
-    }
-    selectedVersionId.value = result.selected_cover_version || result.version_id || ''
-    if (result.image_url) {
-      previewUrl.value = `${result.image_url}${result.image_url.includes('?') ? '&' : '?'}t=${Date.now()}`
-    }
-
-    await loadFromHistory()
-    await syncCoverToHistory(true)
     router.push('/generate')
   } catch (e: any) {
-    error.value = e.message || '封面保存失败'
+    error.value = e.message || '保存失败'
   } finally {
     saving.value = false
   }
@@ -484,41 +443,47 @@ onMounted(async () => {
   }
 
   store.startCoverEditing()
-  coverSpec.value = deriveSpecFromOutline()
-
   const ok = await ensureRecordId()
   if (!ok) return
   await loadFromHistory()
+  ensureSelectedTemplateValid()
   isInitializing.value = false
-  if (!previewUrl.value) {
-    await renderPreviewImage(false)
-  }
 })
 
 watch(
-  coverSpec,
+  () => JSON.stringify({
+    cover: coverLatexCode.value,
+    pages: store.outline.pages.map((page) => ({
+      index: page.index,
+      render_mode: page.render_mode,
+      latex_code: page.latex_code || ''
+    }))
+  }),
   () => {
     if (isInitializing.value) return
-    scheduleAutoPreview()
     scheduleAutoSave()
-  },
-  { deep: true }
+    ensureSelectedTemplateValid()
+  }
 )
 
 onBeforeUnmount(() => {
-  if (autoPreviewTimer) clearTimeout(autoPreviewTimer)
   if (autoSaveTimer) clearTimeout(autoSaveTimer)
 })
 </script>
 
 <style scoped>
-.cover-container {
-  max-width: 1280px;
+.latex-workbench {
+  max-width: 1420px;
 }
 
-.cover-grid {
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.workbench-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 250px 1.1fr 0.9fr;
   gap: 18px;
   align-items: start;
 }
@@ -526,65 +491,187 @@ onBeforeUnmount(() => {
 .section-title {
   font-size: 15px;
   font-weight: 700;
-  margin: 0 0 12px;
+  margin: 0;
 }
 
-.field {
-  margin-bottom: 10px;
+.template-sidebar {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.field label {
-  display: block;
+.sidebar-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-bottom: 4px;
+}
+
+.template-thumb {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  border-radius: 14px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.template-thumb:hover,
+.template-thumb.active {
+  border-color: var(--primary);
+  box-shadow: 0 8px 20px rgba(255, 36, 66, 0.08);
+}
+
+.template-thumb-image {
+  width: 62px;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f3f5f8;
+  flex-shrink: 0;
+}
+
+.template-thumb-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.template-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b93a1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.template-thumb-meta {
+  min-width: 0;
+}
+
+.template-thumb-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #253041;
+}
+
+.template-thumb-subtitle {
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-top: 4px;
+}
+
+.editor-panel,
+.preview-panel {
+  padding: 16px;
+}
+
+.editor-header,
+.preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.editor-note,
+.preview-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.page-content-box {
+  margin-bottom: 12px;
+  border: 1px solid #e7ebf0;
+  border-radius: 12px;
+  background: #fafbfd;
+  padding: 12px;
+}
+
+.page-content-label {
   font-size: 12px;
   color: var(--text-sub);
   margin-bottom: 6px;
 }
 
-.field input,
-.field textarea {
+.page-content-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #364052;
+}
+
+.latex-editor {
   width: 100%;
+  min-height: 640px;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 14px;
-  outline: none;
-  background: #fff;
-}
-
-.field textarea {
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #0f1720;
+  color: #e6edf7;
+  font-size: 13px;
+  line-height: 1.65;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   resize: vertical;
+  outline: none;
 }
 
-.field input:focus,
-.field textarea:focus {
+.latex-editor:focus {
   border-color: var(--primary);
 }
 
-.pos-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.version-section {
+  margin-top: 12px;
+}
+
+.version-title {
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-bottom: 8px;
+}
+
+.version-list {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.pos-item label {
-  display: block;
+.version-chip {
+  border: 1px solid #d9dde3;
+  background: #fff;
+  color: #3f4956;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.version-chip.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(255, 36, 66, 0.08);
+}
+
+.save-tip {
+  margin-top: 12px;
   font-size: 12px;
   color: var(--text-sub);
-  margin-bottom: 4px;
-}
-
-.pos-item input {
-  width: 100%;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-
-.actions {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
 }
 
 .error-box {
@@ -598,32 +685,20 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
 }
 
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.preview-header .meta {
-  font-size: 12px;
-  color: var(--text-sub);
-}
-
 .preview-box {
   width: 100%;
   aspect-ratio: 3 / 4;
   border: 1px dashed var(--border-color);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  background: #f8f9fb;
+  background: #f7f9fc;
 }
 
 .preview-box img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  display: block;
+  object-fit: contain;
+  background: #fff;
 }
 
 .preview-empty {
@@ -632,36 +707,28 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-sub);
+  text-align: center;
+  color: #7d8794;
   font-size: 13px;
+  padding: 20px;
 }
 
-.version-list {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.version-chip {
-  border: 1px solid var(--border-color);
-  background: white;
-  color: var(--text-main);
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.version-chip.active {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(255, 36, 66, 0.08);
-}
-
-@media (max-width: 1024px) {
-  .cover-grid {
+@media (max-width: 1180px) {
+  .workbench-grid {
     grid-template-columns: 1fr;
+  }
+
+  .template-sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .template-thumb {
+    min-width: 220px;
+  }
+
+  .latex-editor {
+    min-height: 420px;
   }
 }
 </style>

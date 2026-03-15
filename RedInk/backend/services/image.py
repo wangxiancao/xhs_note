@@ -197,6 +197,12 @@ class ImageService:
                 lines.append(text if text.startswith("#") else f"#{text}")
         return "\n".join(lines)
 
+    def build_cover_page_content(self, cover_spec: Optional[Dict[str, Any]], user_topic: str = "") -> str:
+        if isinstance(cover_spec, dict):
+            return self._cover_spec_to_page_content(cover_spec)
+        fallback_title = (user_topic or "未命名封面").strip() or "未命名封面"
+        return f"[封面]\n标题：{fallback_title}"
+
     def _extract_cover_text_value(self, page_content: str, keys: List[str]) -> str:
         """从封面文本中提取字段值（如标题、副标题）"""
         if not page_content:
@@ -444,6 +450,20 @@ class ImageService:
         user_topic: str,
     ) -> bytes:
         """通过文本模型生成封面 TeX，编译失败时自动重试修复"""
+        tex_code = self.generate_cover_latex_code(
+            page_content=page_content,
+            full_outline=full_outline,
+            user_topic=user_topic,
+        )
+        return self.render_latex_png_bytes(tex_code)
+
+    def generate_cover_latex_code(
+        self,
+        page_content: str,
+        full_outline: str,
+        user_topic: str,
+    ) -> str:
+        """生成可编译通过的封面 LaTeX 代码"""
         compile_feedback = "无"
         previous_tex = "无"
         text_layout_spec = self._build_cover_text_layout_spec(page_content, user_topic)
@@ -481,7 +501,7 @@ class ImageService:
                         f"封面 TeX 渲染为空白图 (attempt={attempt}/{self.COVER_TEX_MAX_RETRY})"
                     )
                     continue
-                return png_bytes
+                return tex_code
 
             compile_feedback = compile_error or "未知错误"
             previous_tex = tex_code[:8000]
@@ -498,6 +518,20 @@ class ImageService:
         user_topic: str,
     ) -> bytes:
         """通过文本模型生成内容页 TeX，编译失败时自动重试修复"""
+        tex_code = self.generate_page_latex_code(
+            page_content=page_content,
+            full_outline=full_outline,
+            user_topic=user_topic,
+        )
+        return self.render_latex_png_bytes(tex_code)
+
+    def generate_page_latex_code(
+        self,
+        page_content: str,
+        full_outline: str,
+        user_topic: str,
+    ) -> str:
+        """生成可编译通过的内容页 LaTeX 代码"""
         compile_feedback = "无"
         previous_tex = "无"
 
@@ -530,12 +564,21 @@ class ImageService:
                     compile_feedback = "内容页渲染结果为空白或近似空白，请增加有效文字层级、装饰元素和明显的背景层次。"
                     previous_tex = tex_code[:8000]
                     continue
-                return png_bytes
+                return tex_code
 
             compile_feedback = compile_error or "未知错误"
             previous_tex = tex_code[:8000]
 
         raise RuntimeError(f"内容页 TeX 连续编译失败：{compile_feedback}")
+
+    def render_latex_png_bytes(self, latex_code: str) -> bytes:
+        """直接编译并渲染已有 LaTeX 代码"""
+        ok, png_bytes, compile_error = self._compile_cover_tex_to_png(latex_code)
+        if not ok or not png_bytes:
+            raise RuntimeError(compile_error or "LaTeX 编译失败")
+        if self._is_image_visually_blank(png_bytes):
+            raise RuntimeError("LaTeX 渲染结果为空白或近似空白，请检查内容和颜色对比度。")
+        return png_bytes
 
     def render_cover_png_bytes(
         self,
@@ -655,7 +698,8 @@ class ImageService:
             # 封面专用链路：文本模型生成 TeX -> 本地编译 PNG
             if page_type == "cover":
                 logger.info(f"封面页 [{index}] 使用 LaTeX 渲染链路")
-                cover_png = self._generate_cover_via_latex(
+                latex_code = str(page.get("latex_code") or "").strip()
+                cover_png = self.render_latex_png_bytes(latex_code) if latex_code else self._generate_cover_via_latex(
                     page_content=page_content,
                     full_outline=full_outline,
                     user_topic=user_topic,
@@ -684,7 +728,8 @@ class ImageService:
                 return (index, True, filename, None)
 
             if render_mode == "latex":
-                latex_png = self._generate_page_via_latex(
+                latex_code = str(page.get("latex_code") or "").strip()
+                latex_png = self.render_latex_png_bytes(latex_code) if latex_code else self._generate_page_via_latex(
                     page_content=page_content,
                     full_outline=full_outline,
                     user_topic=user_topic,

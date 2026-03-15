@@ -292,6 +292,7 @@ class HistoryService:
                     "source": "outline",
                     "created_at": created_at,
                     "cover_spec": cover_spec,
+                    "latex_code": record.get("cover_latex_code"),
                     "task_id": (record.get("images") or {}).get("task_id"),
                     "image_filename": None,
                 }
@@ -302,6 +303,18 @@ class HistoryService:
         if not selected_cover_version:
             selected_cover_version = cover_versions[0].get("id") if cover_versions else None
         record["selected_cover_version"] = selected_cover_version
+
+        cover_latex_code = record.get("cover_latex_code")
+        if not isinstance(cover_latex_code, str):
+            cover_latex_code = ""
+        if not cover_latex_code and selected_cover_version:
+            selected_version = next(
+                (item for item in cover_versions if isinstance(item, dict) and item.get("id") == selected_cover_version),
+                None
+            )
+            if isinstance(selected_version, dict):
+                cover_latex_code = str(selected_version.get("latex_code") or "")
+        record["cover_latex_code"] = cover_latex_code
         return record
 
     def create_record(
@@ -348,6 +361,7 @@ class HistoryService:
             "status": RecordStatus.DRAFT,  # 初始状态：草稿
             "thumbnail": None,  # 初始无缩略图
             "cover_spec": normalized_cover_spec,
+            "cover_latex_code": "",
             "cover_versions": [
                 {
                     "id": initial_cover_version_id,
@@ -355,6 +369,7 @@ class HistoryService:
                     "source": "outline",
                     "created_at": now,
                     "cover_spec": normalized_cover_spec,
+                    "latex_code": "",
                     "task_id": task_id,
                     "image_filename": None,
                 }
@@ -436,6 +451,7 @@ class HistoryService:
         status: Optional[str] = None,
         thumbnail: Optional[str] = None,
         cover_spec: Optional[Dict[str, Any]] = None,
+        cover_latex_code: Optional[str] = None,
         cover_versions: Optional[List[Dict[str, Any]]] = None,
         selected_cover_version: Optional[str] = None,
     ) -> bool:
@@ -495,6 +511,9 @@ class HistoryService:
             current_outline = record.get("outline") if isinstance(record.get("outline"), dict) else {}
             record["cover_spec"] = self._normalize_cover_spec(cover_spec, current_outline, record.get("title", ""))
 
+        if cover_latex_code is not None:
+            record["cover_latex_code"] = str(cover_latex_code)
+
         # 更新封面版本列表
         if cover_versions is not None:
             normalized_versions: List[Dict[str, Any]] = []
@@ -512,6 +531,7 @@ class HistoryService:
                     "source": version.get("source") or "manual",
                     "created_at": version.get("created_at") or now,
                     "cover_spec": version_cover_spec,
+                    "latex_code": str(version.get("latex_code") or ""),
                     "task_id": version.get("task_id") or (record.get("images") or {}).get("task_id"),
                     "image_filename": version.get("image_filename"),
                 })
@@ -530,6 +550,7 @@ class HistoryService:
             )
             if selected_version and isinstance(selected_version.get("cover_spec"), dict):
                 record["cover_spec"] = selected_version["cover_spec"]
+                record["cover_latex_code"] = str(selected_version.get("latex_code") or record.get("cover_latex_code") or "")
 
         # 保存完整记录
         record_path = self._get_record_path(record_id)
