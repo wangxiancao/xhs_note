@@ -30,7 +30,7 @@
     <!-- 版权信息 -->
     <div class="page-footer">
       <div class="footer-copyright">
-        © 2026 xhs_note · RedInk 本地部署版
+        © 2026 RedInk-glm · RedInk 本地部署版
       </div>
       <div class="footer-license">
         主题 → 大纲 → 图片 → 发布

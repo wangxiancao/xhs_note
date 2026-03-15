@@ -1,4 +1,4 @@
-# xhs_note
+# RedInk-glm
 
 基于 `RedInk` 的本地小红书图文生产项目，主链路为：
 

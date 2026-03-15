@@ -38,7 +38,7 @@ class PublishService:
         self.login_status_url = urljoin(f"{base_url}/", "api/v1/login/status")
 
         # 目录结构：
-        #   xhs_note/
+        #   RedInk-glm/
         #     ├─ RedInk/                <-- redink_root
         #     │   └─ history/
         #     └─ images/publish/        <-- staged_host_root
@@ -169,7 +169,7 @@ class PublishService:
                 "protocolVersion": "2025-06-18",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "xhs-note-redink",
+                    "name": "redink-glm",
                     "version": "0.1.0",
                 },
             },

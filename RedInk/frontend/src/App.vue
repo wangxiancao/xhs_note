@@ -41,7 +41,7 @@
         <footer v-if="route.path !== '/'" class="global-footer">
           <div class="footer-content">
             <div class="footer-text">
-              © 2026 xhs_note · RedInk 本地部署版
+              © 2026 RedInk-glm · RedInk 本地部署版
             </div>
             <div class="footer-license">
               文档：README.md / WORKFLOW.md
