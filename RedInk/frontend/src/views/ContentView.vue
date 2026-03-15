@@ -122,6 +122,7 @@ const quickPrompts = [
   '语气更真诚一点'
 ]
 
+const content = computed(() => store.content)
 const messages = computed(() => store.content.messages || [])
 const contentStatusLabel = computed(() => {
   const mapping: Record<string, string> = {
