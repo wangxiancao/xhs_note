@@ -18,6 +18,8 @@ from urllib.parse import urljoin
 
 import requests
 
+from backend.services.history import get_history_service
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,6 +77,7 @@ class PublishService:
     def publish_from_result(
         self,
         task_id: str,
+        record_id: str,
         topic: str = "",
         title: str = "",
         content: str = "",
@@ -87,6 +90,9 @@ class PublishService:
         normalized_task_id = (task_id or "").strip()
         if not normalized_task_id:
             raise ValueError("参数错误：task_id 不能为空。")
+        normalized_record_id = (record_id or "").strip()
+        if not normalized_record_id:
+            raise ValueError("参数错误：record_id 不能为空。")
 
         resolved_title = (title or topic or "").strip()
         if not resolved_title:
@@ -99,7 +105,11 @@ class PublishService:
             raise ValueError("参数错误：content 不能为空。")
 
         normalized_tags = self._normalize_tags(tags or [])
-        source_images = self._collect_source_images(normalized_task_id, image_filenames or [])
+        source_images = self._resolve_publish_images(
+            task_id=normalized_task_id,
+            record_id=normalized_record_id,
+            image_filenames=image_filenames or [],
+        )
         staged = self._stage_images(normalized_task_id, source_images)
 
         publish_args: Dict[str, Any] = {
@@ -140,6 +150,69 @@ class PublishService:
             "staged_host_paths": staged["host_paths"],
             "staged_container_paths": staged["container_paths"],
         }
+
+    def _resolve_publish_images(self, task_id: str, record_id: str, image_filenames: List[str]) -> List[Path]:
+        """
+        解析发布图片列表，并强制将 selected_cover_version 对应封面放在首位。
+        """
+        history_service = get_history_service()
+        record = history_service.get_record(record_id)
+        if not record:
+            raise ValueError(f"参数错误：record_id 不存在（{record_id}）。")
+
+        selected_cover_path = self._resolve_selected_cover_path(record)
+        source_images = self._collect_source_images(task_id, image_filenames)
+
+        ordered_images: List[Path] = [selected_cover_path]
+        selected_cover_real = str(selected_cover_path.resolve())
+        for image in source_images:
+            if str(image.resolve()) == selected_cover_real:
+                continue
+            ordered_images.append(image)
+
+        if len(ordered_images) < 1:
+            raise ValueError("发布失败：未找到可发布图片。")
+
+        return ordered_images
+
+    def _resolve_selected_cover_path(self, record: Dict[str, Any]) -> Path:
+        """
+        读取历史记录中 selected_cover_version 对应封面，并校验其可访问性。
+        """
+        selected_version_id = (record.get("selected_cover_version") or "").strip()
+        if not selected_version_id:
+            raise ValueError("发布失败：未选择封面版本，请先在封面创作台确认封面。")
+
+        versions = record.get("cover_versions")
+        if not isinstance(versions, list) or not versions:
+            raise ValueError("发布失败：封面版本为空，请先生成并保存封面。")
+
+        selected_version = next(
+            (item for item in versions if isinstance(item, dict) and item.get("id") == selected_version_id),
+            None,
+        )
+        if not selected_version:
+            raise ValueError("发布失败：当前选中的封面版本不存在，请重新选择封面。")
+
+        selected_task_id = (
+            selected_version.get("task_id")
+            or (record.get("images") or {}).get("task_id")
+            or ""
+        ).strip()
+        image_filename = (selected_version.get("image_filename") or "").strip()
+
+        if not selected_task_id or not image_filename:
+            raise ValueError("发布失败：封面版本缺少图片文件，请先重新渲染封面并保存。")
+
+        cover_path = self.history_root / selected_task_id / image_filename
+        if not cover_path.exists() or not cover_path.is_file():
+            raise ValueError(f"发布失败：封面文件不存在（{cover_path}）。")
+        if not os.access(cover_path, os.R_OK):
+            raise ValueError(f"发布失败：封面文件不可读（{cover_path}）。")
+        if cover_path.stat().st_size <= 0:
+            raise ValueError(f"发布失败：封面文件为空（{cover_path}）。")
+
+        return cover_path
 
     def _call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """通过 MCP 会话调用工具"""

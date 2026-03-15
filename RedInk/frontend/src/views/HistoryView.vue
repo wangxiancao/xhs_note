@@ -106,6 +106,8 @@
       @regenerate="regenerateHistoryImage"
       @downloadAll="downloadAllImages"
       @download="downloadImage"
+      @selectCover="switchCoverVersion"
+      @editCover="editCoverFromHistory"
     />
 
     <!-- 大纲查看模态框 -->
@@ -129,6 +131,7 @@ import {
   deleteHistory,
   getHistory,
   type HistoryRecord,
+  selectCoverVersion,
   regenerateImage as apiRegenerateImage,
   updateHistory,
   scanAllTasks
@@ -221,7 +224,7 @@ async function handleSearch() {
 /**
  * 加载记录并跳转到编辑页
  */
-async function loadRecord(id: string) {
+async function loadRecord(id: string, target: 'outline' | 'cover' = 'outline') {
   const res = await getHistory(id)
   if (res.success && res.record) {
     store.setTopic(res.record.title)
@@ -239,7 +242,12 @@ async function loadRecord(id: string) {
         }
       })
     }
-    router.push('/outline')
+    if (target === 'cover') {
+      store.startCoverEditing()
+      router.push('/cover')
+    } else {
+      router.push('/outline')
+    }
   }
 }
 
@@ -249,6 +257,40 @@ async function loadRecord(id: string) {
 async function viewImages(id: string) {
   const res = await getHistory(id)
   if (res.success) viewingRecord.value = res.record
+}
+
+/**
+ * 切换历史记录的封面版本
+ */
+async function switchCoverVersion(versionId: string) {
+  if (!viewingRecord.value?.id || !versionId) return
+  try {
+    const result = await selectCoverVersion({
+      record_id: viewingRecord.value.id,
+      version_id: versionId
+    })
+    if (!result.success) {
+      alert('切换封面版本失败: ' + (result.error || '未知错误'))
+      return
+    }
+
+    const refreshed = await getHistory(viewingRecord.value.id)
+    if (refreshed.success && refreshed.record) {
+      viewingRecord.value = refreshed.record
+    }
+    await loadData()
+    await loadStats()
+  } catch (e) {
+    alert('切换封面版本失败: ' + String(e))
+  }
+}
+
+/**
+ * 从历史记录进入封面编辑
+ */
+async function editCoverFromHistory() {
+  if (!viewingRecord.value?.id) return
+  await loadRecord(viewingRecord.value.id, 'cover')
 }
 
 /**

@@ -41,6 +41,9 @@
         </div>
 
         <div class="header-actions">
+          <button class="btn cover-edit-btn" @click="$emit('editCover')">
+            编辑封面
+          </button>
           <button class="btn download-btn" @click="$emit('downloadAll')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -50,6 +53,33 @@
             打包下载
           </button>
           <button class="close-icon" @click="$emit('close')">×</button>
+        </div>
+      </div>
+
+      <div v-if="record.cover_versions && record.cover_versions.length > 0" class="cover-version-panel">
+        <div class="cover-version-preview">
+          <img
+            v-if="selectedCoverVersion && getCoverVersionImageUrl(selectedCoverVersion)"
+            :src="getCoverVersionImageUrl(selectedCoverVersion)"
+            alt="selected cover version"
+          />
+          <div v-else class="cover-version-empty">当前封面版本暂无可用图片</div>
+        </div>
+        <div class="cover-version-meta">
+          <div class="cover-version-title">
+            当前封面：{{ selectedCoverVersion?.name || record.selected_cover_version || '未选择' }}
+          </div>
+          <div class="cover-version-list">
+            <button
+              v-for="version in record.cover_versions"
+              :key="version.id"
+              class="cover-version-chip"
+              :class="{ active: record.selected_cover_version === version.id }"
+              @click="$emit('selectCover', version.id)"
+            >
+              {{ version.name }} ({{ version.id }})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -128,6 +158,15 @@ interface ViewingRecord {
     task_id: string
     generated: string[]
   }
+  cover_versions?: Array<{
+    id: string
+    name: string
+    source?: string
+    created_at?: string
+    task_id?: string | null
+    image_filename?: string | null
+  }>
+  selected_cover_version?: string | null
 }
 
 // 定义 Props
@@ -144,6 +183,8 @@ defineEmits<{
   (e: 'downloadAll'): void
   (e: 'download', filename: string, index: number): void
   (e: 'regenerate', index: number): void
+  (e: 'selectCover', versionId: string): void
+  (e: 'editCover'): void
 }>()
 
 // 标题展开状态
@@ -155,6 +196,21 @@ const formattedDate = computed(() => {
   const d = new Date(props.record.updated_at)
   return `${d.getMonth() + 1}/${d.getDate()}`
 })
+
+const selectedCoverVersion = computed(() => {
+  if (!props.record?.cover_versions || props.record.cover_versions.length === 0) return null
+  const selectedId = props.record.selected_cover_version
+  if (!selectedId) return props.record.cover_versions[0]
+  return props.record.cover_versions.find((version) => version.id === selectedId) || props.record.cover_versions[0]
+})
+
+const getCoverVersionImageUrl = (version: {
+  task_id?: string | null
+  image_filename?: string | null
+} | null) => {
+  if (!version?.task_id || !version?.image_filename) return ''
+  return `/api/images/${version.task_id}/${version.image_filename}?thumbnail=false`
+}
 </script>
 
 <style scoped>
@@ -276,6 +332,13 @@ const formattedDate = computed(() => {
   align-items: center;
 }
 
+.cover-edit-btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  background: white;
+  border: 1px solid var(--border-color, #dee2e6);
+}
+
 .download-btn {
   padding: 8px 16px;
   font-size: 14px;
@@ -296,6 +359,75 @@ const formattedDate = computed(() => {
 
 .close-icon:hover {
   color: #333;
+}
+
+.cover-version-panel {
+  border-bottom: 1px solid #eee;
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.cover-version-preview {
+  width: 220px;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f6f7f9;
+  border: 1px solid #eceff3;
+}
+
+.cover-version-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-version-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #8a9099;
+  font-size: 12px;
+  padding: 12px;
+}
+
+.cover-version-meta {
+  min-width: 0;
+}
+
+.cover-version-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #364052;
+  margin-bottom: 10px;
+}
+
+.cover-version-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cover-version-chip {
+  border: 1px solid #d9dde3;
+  background: white;
+  color: #3f4956;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cover-version-chip.active {
+  border-color: var(--primary, #ff2442);
+  color: var(--primary, #ff2442);
+  background: rgba(255, 36, 66, 0.08);
 }
 
 /* 图片网格 */
@@ -432,6 +564,17 @@ const formattedDate = computed(() => {
 @media (max-width: 768px) {
   .modal-fullscreen {
     padding: 20px;
+  }
+
+  .cover-version-panel {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .cover-version-preview {
+    width: 100%;
+    max-width: 260px;
   }
 
   .modal-gallery-grid {

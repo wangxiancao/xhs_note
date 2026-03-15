@@ -43,6 +43,7 @@ def create_publish_blueprint():
 
         请求体（application/json）：
         - task_id: 生成任务ID（必填）
+        - record_id: 历史记录ID（必填）
         - topic: 主题（可选）
         - title: 标题（可选，未传时使用 topic）
         - content: 正文（必填）
@@ -55,6 +56,7 @@ def create_publish_blueprint():
         try:
             data = request.get_json() or {}
             task_id = data.get("task_id", "")
+            record_id = data.get("record_id", "")
             topic = data.get("topic", "")
             title = data.get("title", "")
             content = data.get("content", "")
@@ -69,6 +71,7 @@ def create_publish_blueprint():
 
             log_request("/publish/from-result", {
                 "task_id": task_id,
+                "record_id": record_id,
                 "title": title[:30] if title else "",
                 "tags_count": len(tags) if isinstance(tags, list) else 0,
                 "image_filenames_count": len(image_filenames) if isinstance(image_filenames, list) else 0,
@@ -78,6 +81,7 @@ def create_publish_blueprint():
             publish_service = get_publish_service()
             result = publish_service.publish_from_result(
                 task_id=task_id,
+                record_id=record_id,
                 topic=topic,
                 title=title,
                 content=content,

@@ -915,6 +915,7 @@ export interface PublishStatusResponse {
 
 export interface PublishFromResultParams {
   task_id: string
+  record_id: string
   topic?: string
   title?: string
   content?: string

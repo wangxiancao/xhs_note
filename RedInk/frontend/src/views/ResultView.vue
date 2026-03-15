@@ -12,6 +12,9 @@
         <button class="btn" @click="startOver" style="background: white; border: 1px solid var(--border-color);">
           再来一篇
         </button>
+        <button class="btn" @click="editCover" style="background: white; border: 1px solid var(--border-color);">
+          编辑封面
+        </button>
         <button
           class="btn btn-primary"
           @click="handlePublish"
@@ -113,7 +116,7 @@ const publishing = ref(false)
 const publishStatusText = ref('正在检查登录状态...')
 
 const canPublish = computed(() => {
-  return Boolean(store.taskId) && store.images.some((image) => Boolean(image.url))
+  return Boolean(store.taskId) && Boolean(store.recordId) && store.images.some((image) => Boolean(image.url))
 })
 
 onMounted(async () => {
@@ -128,6 +131,15 @@ const viewImage = (url: string) => {
 const startOver = () => {
   store.reset()
   router.push('/')
+}
+
+const editCover = () => {
+  if (!store.outline.pages.length) {
+    alert('缺少大纲数据，无法进入封面编辑。')
+    return
+  }
+  store.startCoverEditing()
+  router.push('/cover')
 }
 
 const downloadOne = (image: any) => {
@@ -185,6 +197,10 @@ const getImageFilenameFromUrl = (url: string): string | null => {
 
 const handlePublish = async () => {
   if (!store.taskId || publishing.value) return
+  if (!store.recordId) {
+    alert('缺少历史记录 ID，无法锁定封面版本。请先返回流程重新生成。')
+    return
+  }
 
   const imageFilenames = store.images
     .map(image => getImageFilenameFromUrl(image.url))
@@ -216,6 +232,7 @@ const handlePublish = async () => {
   try {
     const result = await publishFromResult({
       task_id: store.taskId,
+      record_id: store.recordId,
       topic: store.topic,
       title,
       content,
