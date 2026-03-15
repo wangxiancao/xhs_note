@@ -34,6 +34,18 @@ export interface FinishEvent {
   images: string[]
 }
 
+export interface ContentData {
+  titles: string[]
+  copywriting: string
+  tags: string[]
+}
+
+export interface ContentChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  created_at?: string
+}
+
 // 生成大纲（支持图片上传）
 export async function generateOutline(
   topic: string,
@@ -234,6 +246,8 @@ export interface HistoryDetail {
   thumbnail: string | null
   cover_spec?: CoverSpec
   cover_latex_code?: string
+  content_data?: ContentData
+  content_chat_messages?: ContentChatMessage[]
   cover_versions?: CoverVersion[]
   selected_cover_version?: string | null
 }
@@ -316,6 +330,8 @@ export interface UpdateHistoryParams {
   thumbnail?: string
   cover_spec?: CoverSpec
   cover_latex_code?: string
+  content_data?: ContentData
+  content_chat_messages?: ContentChatMessage[]
   cover_versions?: CoverVersion[]
   selected_cover_version?: string | null
 }
@@ -955,6 +971,7 @@ export interface ContentResponse {
   titles?: string[]
   copywriting?: string
   tags?: string[]
+  assistant_reply?: string
   error?: string
 }
 
@@ -966,6 +983,23 @@ export async function generateContent(
   const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content`, {
     topic,
     outline
+  })
+  return response.data
+}
+
+export async function refineContent(
+  topic: string,
+  outline: string,
+  currentContent: ContentData,
+  messages: ContentChatMessage[],
+  userMessage: string
+): Promise<ContentResponse> {
+  const response = await axios.post<ContentResponse>(`${API_BASE_URL}/content/refine`, {
+    topic,
+    outline,
+    current_content: currentContent,
+    messages,
+    user_message: userMessage
   })
   return response.data
 }

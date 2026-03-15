@@ -15,7 +15,7 @@
  * 5. result: 查看生成结果
  */
 import { defineStore } from 'pinia'
-import type { Page } from '../api'
+import type { ContentChatMessage, Page } from '../api'
 import { pagesToRaw, sanitizeOutline } from '../utils/outline'
 
 /**
@@ -36,13 +36,14 @@ export interface GeneratedContent {
   titles: string[]     // 标题列表（多个备选）
   copywriting: string  // 文案内容
   tags: string[]       // 标签列表
+  messages: ContentChatMessage[] // AI 对话优化记录
   status: 'idle' | 'generating' | 'done' | 'error'  // 生成状态
   error?: string       // 错误信息
 }
 
 export interface GeneratorState {
-  // 当前阶段：input-输入主题, outline-编辑大纲, cover-封面创作, generating-生成中, result-查看结果
-  stage: 'input' | 'outline' | 'cover' | 'generating' | 'result'
+  // 当前阶段：input-输入主题, outline-编辑大纲, content-文案优化, cover-封面创作, generating-生成中, result-查看结果
+  stage: 'input' | 'outline' | 'content' | 'cover' | 'generating' | 'result'
 
   // 用户输入的主题
   topic: string
@@ -156,11 +157,13 @@ export const useGeneratorStore = defineStore('generator', {
       userImages: [],
 
       // 生成的内容数据
-      content: saved.content || {
-        titles: [],
-        copywriting: '',
-        tags: [],
-        status: 'idle'
+      content: {
+        titles: saved.content?.titles || [],
+        copywriting: saved.content?.copywriting || '',
+        tags: saved.content?.tags || [],
+        messages: saved.content?.messages || [],
+        status: saved.content?.status || 'idle',
+        error: saved.content?.error
       },
 
       // 大纲生成状态
@@ -191,6 +194,13 @@ export const useGeneratorStore = defineStore('generator', {
       this.outline.pages = normalizedOutline.pages
       this.stage = 'outline'
       this.outlineStatus = 'done'  // 设置大纲为已完成状态
+    },
+
+    /**
+     * 进入文案工作台阶段
+     */
+    startContentEditing() {
+      this.stage = 'content'
     },
 
     /**
@@ -443,6 +453,7 @@ export const useGeneratorStore = defineStore('generator', {
         titles: [],          // 清空标题列表
         copywriting: '',     // 清空文案
         tags: [],            // 清空标签列表
+        messages: [],        // 清空优化对话
         status: 'idle'       // 状态设为空闲
       }
 
@@ -477,6 +488,25 @@ export const useGeneratorStore = defineStore('generator', {
       this.content.tags = tags
       this.content.status = 'done'
       this.content.error = undefined
+    },
+
+    /**
+     * 设置文案优化对话
+     * @param messages 对话消息数组
+     */
+    setContentMessages(messages: ContentChatMessage[]) {
+      this.content.messages = Array.isArray(messages) ? messages : []
+    },
+
+    /**
+     * 追加文案优化消息
+     * @param message 单条对话消息
+     */
+    appendContentMessage(message: ContentChatMessage) {
+      if (!Array.isArray(this.content.messages)) {
+        this.content.messages = []
+      }
+      this.content.messages.push(message)
     },
 
     /**
@@ -523,6 +553,7 @@ export const useGeneratorStore = defineStore('generator', {
         titles: [],
         copywriting: '',
         tags: [],
+        messages: [],
         status: 'idle'
       }
     },

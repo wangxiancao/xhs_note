@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import OutlineView from '../views/OutlineView.vue'
+import ContentView from '../views/ContentView.vue'
 import CoverView from '../views/CoverView.vue'
 import GenerateView from '../views/GenerateView.vue'
 import ResultView from '../views/ResultView.vue'
@@ -19,6 +20,11 @@ const router = createRouter({
       path: '/outline',
       name: 'outline',
       component: OutlineView
+    },
+    {
+      path: '/content',
+      name: 'content',
+      component: ContentView
     },
     {
       path: '/generate',

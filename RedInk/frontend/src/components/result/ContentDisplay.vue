@@ -192,6 +192,7 @@ async function handleGenerate() {
   if (loading.value) return
 
   loading.value = true
+  store.setContentMessages([])
   store.startContentGeneration()
 
   try {

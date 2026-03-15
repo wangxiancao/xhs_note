@@ -6,8 +6,8 @@
         <p class="page-subtitle">左侧切换模板，中间编辑 LaTeX，右侧手动渲染预览</p>
       </div>
       <div class="header-actions">
-        <button class="btn" @click="router.push('/outline')" style="border:1px solid var(--border-color)">
-          返回大纲
+        <button class="btn" @click="router.push('/content')" style="border:1px solid var(--border-color)">
+          返回文本
         </button>
         <button class="btn btn-primary" @click="saveAndContinue" :disabled="saving">
           {{ saving ? '保存中...' : '保存并继续' }}

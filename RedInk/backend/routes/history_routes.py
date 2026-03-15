@@ -249,6 +249,8 @@ def create_history_blueprint():
         - images: 图片信息 { task_id, generated: [] }
         - status: 状态（draft/generating/partial/completed/error）
         - thumbnail: 缩略图文件名
+        - content_data: 文案结果 { titles, copywriting, tags }
+        - content_chat_messages: 文案优化对话数组
         - cover_spec: 封面结构化参数
         - cover_versions: 封面版本数组
         - selected_cover_version: 当前选中的封面版本 ID
@@ -286,6 +288,9 @@ def create_history_blueprint():
             status = data.get('status')
             thumbnail = data.get('thumbnail')
             cover_spec = data.get('cover_spec')
+            cover_latex_code = data.get('cover_latex_code')
+            content_data = data.get('content_data')
+            content_chat_messages = data.get('content_chat_messages')
             cover_versions = data.get('cover_versions')
             selected_cover_version = data.get('selected_cover_version')
 
@@ -297,6 +302,9 @@ def create_history_blueprint():
                 status=status,
                 thumbnail=thumbnail,
                 cover_spec=cover_spec,
+                cover_latex_code=cover_latex_code,
+                content_data=content_data,
+                content_chat_messages=content_chat_messages,
                 cover_versions=cover_versions,
                 selected_cover_version=selected_cover_version,
             )

@@ -25,6 +25,7 @@ class ContentService:
         self.text_config = self._load_text_config()
         self.client = self._get_client()
         self.prompt_template = self._load_prompt_template()
+        self.refine_prompt_template = self._load_refine_prompt_template()
         logger.info(f"ContentService 初始化完成，使用服务商: {self.text_config.get('active_provider')}")
 
     def _load_text_config(self) -> dict:
@@ -122,6 +123,79 @@ class ContentService:
         )
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def _load_refine_prompt_template(self) -> str:
+        """加载文案优化提示词模板"""
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "prompts",
+            "content_refine_prompt.txt"
+        )
+        if os.path.exists(prompt_path):
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+        return (
+            "你是一个小红书文案优化助手。请根据主题、大纲、当前文案和对话历史，输出优化后的完整 JSON。\n"
+            "只输出 JSON，不要额外解释。\n\n"
+            "主题：{topic}\n\n"
+            "大纲：\n{outline}\n\n"
+            "当前文案：\n{current_content}\n\n"
+            "历史对话：\n{conversation_history}\n\n"
+            "用户本轮要求：\n{user_message}\n\n"
+            "JSON 格式：\n"
+            "{{\n"
+            '  "assistant_reply": "用自然中文简要说明本轮改动",\n'
+            '  "titles": ["标题1", "标题2", "标题3"],\n'
+            '  "copywriting": "完整正文",\n'
+            '  "tags": ["标签1", "标签2", "标签3"]\n'
+            "}}\n"
+        )
+
+    def _normalize_content_payload(self, payload: Any) -> Dict[str, Any]:
+        """标准化内容载荷，确保结构稳定"""
+        if not isinstance(payload, dict):
+            return {
+                "titles": [],
+                "copywriting": "",
+                "tags": [],
+            }
+
+        titles = payload.get("titles", [])
+        if isinstance(titles, str):
+            titles = [titles]
+        elif not isinstance(titles, list):
+            titles = []
+
+        tags = payload.get("tags", [])
+        if isinstance(tags, str):
+            tags = [item.strip() for item in tags.split(",") if item.strip()]
+        elif not isinstance(tags, list):
+            tags = []
+
+        return {
+            "titles": [str(item).strip() for item in titles if str(item).strip()][:6],
+            "copywriting": str(payload.get("copywriting") or ""),
+            "tags": [str(item).strip().lstrip("#") for item in tags if str(item).strip()][:12],
+        }
+
+    def _format_conversation_history(self, messages: List[Dict[str, Any]]) -> str:
+        """将聊天记录压缩成 prompt 文本"""
+        if not messages:
+            return "暂无历史对话"
+
+        lines: List[str] = []
+        for item in messages[-12:]:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip().lower()
+            content = str(item.get("content") or "").strip()
+            if role not in {"user", "assistant"} or not content:
+                continue
+            speaker = "用户" if role == "user" else "助手"
+            lines.append(f"{speaker}: {content}")
+
+        return "\n".join(lines) if lines else "暂无历史对话"
 
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
         """解析 AI 返回的 JSON 响应"""
@@ -259,6 +333,61 @@ class ContentService:
             return {
                 "success": False,
                 "error": detailed_error
+            }
+
+    def refine_content(
+        self,
+        topic: str,
+        outline: str,
+        current_content: Dict[str, Any],
+        messages: List[Dict[str, Any]],
+        user_message: str,
+    ) -> Dict[str, Any]:
+        """
+        基于用户对话继续优化标题、文案和标签
+        """
+        try:
+            normalized_content = self._normalize_content_payload(current_content)
+            prompt = self.refine_prompt_template.format(
+                topic=topic,
+                outline=outline,
+                current_content=json.dumps(normalized_content, ensure_ascii=False, indent=2),
+                conversation_history=self._format_conversation_history(messages),
+                user_message=user_message,
+            )
+
+            active_provider = self.text_config.get('active_provider', 'glm_47')
+            providers = self.text_config.get('providers', {})
+            provider_config = providers.get(active_provider, {})
+
+            model = provider_config.get('model', 'glm-4.7')
+            temperature = provider_config.get('temperature', 0.7)
+            max_output_tokens = provider_config.get('max_output_tokens', 4000)
+
+            response_text = self.client.generate_text(
+                prompt=prompt,
+                model=model,
+                temperature=min(max(float(temperature or 0.7), 0.0), 1.0),
+                max_output_tokens=max_output_tokens
+            )
+
+            content_data = self._parse_json_response(response_text)
+            normalized_result = self._normalize_content_payload(content_data)
+            assistant_reply = str(content_data.get("assistant_reply") or "").strip() or "已按你的要求更新标题、文案和标签。"
+
+            return {
+                "success": True,
+                "assistant_reply": assistant_reply,
+                "titles": normalized_result["titles"],
+                "copywriting": normalized_result["copywriting"],
+                "tags": normalized_result["tags"],
+            }
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"文案优化失败: {error_msg}")
+            return {
+                "success": False,
+                "error": f"文案优化失败。\n错误详情: {error_msg}"
             }
 
 

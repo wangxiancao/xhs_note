@@ -14,7 +14,7 @@
           让传播不再需要门槛，让创作从未如此简单
         </div>
         <h1 class="page-title">灵感一触即发</h1>
-        <p class="page-subtitle">输入主题后，依次完成大纲、图片、文案生成并一键发布到小红书</p>
+        <p class="page-subtitle">输入主题后，依次完成大纲、文本优化、图片生成并一键发布到小红书</p>
       </div>
 
       <!-- 主题输入组合框 -->
@@ -33,7 +33,7 @@
         © 2026 RedInk-glm · RedInk 本地部署版
       </div>
       <div class="footer-license">
-        主题 → 大纲 → 图片 → 发布
+        主题 → 大纲 → 文本 → 图片 → 发布
       </div>
     </div>
 

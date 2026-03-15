@@ -230,6 +230,24 @@ async function loadRecord(id: string, target: 'outline' | 'cover' = 'outline') {
     store.setTopic(res.record.title)
     store.setOutline(res.record.outline.raw, res.record.outline.pages)
     store.setRecordId(res.record.id)
+    const contentData = res.record.content_data
+    const hasContentData = Boolean(
+      contentData && (
+        (contentData.titles?.length || 0) > 0 ||
+        Boolean(contentData.copywriting) ||
+        (contentData.tags?.length || 0) > 0
+      )
+    )
+    if (hasContentData) {
+      store.setContent(
+        contentData?.titles || [],
+        contentData?.copywriting || '',
+        contentData?.tags || []
+      )
+    } else {
+      store.clearContent()
+    }
+    store.setContentMessages(res.record.content_chat_messages || [])
     if (res.record.images.generated.length > 0) {
       store.taskId = res.record.images.task_id
       store.images = res.record.outline.pages.map((page, idx) => {
@@ -241,6 +259,9 @@ async function loadRecord(id: string, target: 'outline' | 'cover' = 'outline') {
           retryable: !filename
         }
       })
+    } else {
+      store.taskId = null
+      store.images = []
     }
     if (target === 'cover') {
       store.startCoverEditing()

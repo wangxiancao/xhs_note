@@ -79,4 +79,82 @@ def create_content_blueprint():
                 "error": f"内容生成异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
             }), 500
 
+    @content_bp.route('/content/refine', methods=['POST'])
+    def refine_content():
+        """
+        基于当前文案和对话上下文继续优化内容
+
+        请求格式（application/json）：
+        - topic: 主题文本
+        - outline: 大纲内容
+        - current_content: 当前文案 { titles, copywriting, tags }
+        - messages: 历史对话消息
+        - user_message: 用户本轮优化指令
+        """
+        start_time = time.time()
+
+        try:
+            data = request.get_json() or {}
+            topic = data.get('topic', '')
+            outline = data.get('outline', '')
+            current_content = data.get('current_content') or {}
+            messages = data.get('messages') or []
+            user_message = data.get('user_message', '')
+
+            log_request('/content/refine', {
+                'topic': topic[:50] if topic else '',
+                'outline_length': len(outline),
+                'message_count': len(messages) if isinstance(messages, list) else 0,
+                'user_message': str(user_message)[:120],
+            })
+
+            if not topic:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：topic 不能为空。"
+                }), 400
+
+            if not outline:
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：outline 不能为空。"
+                }), 400
+
+            if not isinstance(current_content, dict):
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：current_content 必须为对象。"
+                }), 400
+
+            if not str(user_message).strip():
+                return jsonify({
+                    "success": False,
+                    "error": "参数错误：user_message 不能为空。"
+                }), 400
+
+            content_service = get_content_service()
+            result = content_service.refine_content(
+                topic=topic,
+                outline=outline,
+                current_content=current_content,
+                messages=messages if isinstance(messages, list) else [],
+                user_message=str(user_message).strip(),
+            )
+
+            elapsed = time.time() - start_time
+            if result["success"]:
+                logger.info(f"✅ 文案优化成功，耗时 {elapsed:.2f}s")
+                return jsonify(result), 200
+
+            logger.error(f"❌ 文案优化失败: {result.get('error', '未知错误')}")
+            return jsonify(result), 500
+
+        except Exception as e:
+            log_error('/content/refine', e)
+            error_msg = str(e)
+            return jsonify({
+                "success": False,
+                "error": f"文案优化异常。\n错误详情: {error_msg}\n建议：检查后端日志获取更多信息"
+            }), 500
+
     return content_bp

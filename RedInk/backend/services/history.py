@@ -271,6 +271,66 @@ class HistoryService:
         )
         return merged
 
+    def _normalize_content_data(self, content_data: Any) -> Dict[str, Any]:
+        """标准化生成文案数据"""
+        if not isinstance(content_data, dict):
+            return {
+                "titles": [],
+                "copywriting": "",
+                "tags": [],
+            }
+
+        raw_titles = content_data.get("titles")
+        if isinstance(raw_titles, str):
+            titles = [raw_titles.strip()] if raw_titles.strip() else []
+        elif isinstance(raw_titles, list):
+            titles = [str(item).strip() for item in raw_titles if str(item).strip()]
+        else:
+            titles = []
+
+        raw_tags = content_data.get("tags")
+        if isinstance(raw_tags, str):
+            tags = [item.strip().lstrip("#") for item in raw_tags.split(",") if item.strip()]
+        elif isinstance(raw_tags, list):
+            tags = [str(item).strip().lstrip("#") for item in raw_tags if str(item).strip()]
+        else:
+            tags = []
+
+        return {
+            "titles": titles[:6],
+            "copywriting": str(content_data.get("copywriting") or ""),
+            "tags": tags[:12],
+        }
+
+    def _normalize_content_chat_messages(self, messages: Any) -> List[Dict[str, str]]:
+        """标准化文案优化对话记录"""
+        if not isinstance(messages, list):
+            return []
+
+        normalized: List[Dict[str, str]] = []
+        for item in messages[-30:]:
+            if not isinstance(item, dict):
+                continue
+
+            role = str(item.get("role") or "").strip().lower()
+            if role not in {"user", "assistant"}:
+                continue
+
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+
+            normalized_item = {
+                "role": role,
+                "content": content,
+            }
+            created_at = str(item.get("created_at") or "").strip()
+            if created_at:
+                normalized_item["created_at"] = created_at
+            normalized.append(normalized_item)
+
+        return normalized
+
     def _ensure_cover_fields(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """兼容旧记录：补齐 cover_spec / cover_versions / selected_cover_version"""
         outline = record.get("outline") if isinstance(record.get("outline"), dict) else {}
@@ -315,6 +375,9 @@ class HistoryService:
             if isinstance(selected_version, dict):
                 cover_latex_code = str(selected_version.get("latex_code") or "")
         record["cover_latex_code"] = cover_latex_code
+
+        record["content_data"] = self._normalize_content_data(record.get("content_data"))
+        record["content_chat_messages"] = self._normalize_content_chat_messages(record.get("content_chat_messages"))
         return record
 
     def create_record(
@@ -362,6 +425,12 @@ class HistoryService:
             "thumbnail": None,  # 初始无缩略图
             "cover_spec": normalized_cover_spec,
             "cover_latex_code": "",
+            "content_data": {
+                "titles": [],
+                "copywriting": "",
+                "tags": [],
+            },
+            "content_chat_messages": [],
             "cover_versions": [
                 {
                     "id": initial_cover_version_id,
@@ -452,6 +521,8 @@ class HistoryService:
         thumbnail: Optional[str] = None,
         cover_spec: Optional[Dict[str, Any]] = None,
         cover_latex_code: Optional[str] = None,
+        content_data: Optional[Dict[str, Any]] = None,
+        content_chat_messages: Optional[List[Dict[str, str]]] = None,
         cover_versions: Optional[List[Dict[str, Any]]] = None,
         selected_cover_version: Optional[str] = None,
     ) -> bool:
@@ -513,6 +584,12 @@ class HistoryService:
 
         if cover_latex_code is not None:
             record["cover_latex_code"] = str(cover_latex_code)
+
+        if content_data is not None:
+            record["content_data"] = self._normalize_content_data(content_data)
+
+        if content_chat_messages is not None:
+            record["content_chat_messages"] = self._normalize_content_chat_messages(content_chat_messages)
 
         # 更新封面版本列表
         if cover_versions is not None:
