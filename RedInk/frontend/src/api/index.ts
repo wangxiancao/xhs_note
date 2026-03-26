@@ -1042,7 +1042,6 @@ export interface PublishVideoParams {
   title?: string
   content: string
   video: File
-  cover?: File
   tags?: string[]
   schedule_at?: string
   dry_run?: boolean
@@ -1087,9 +1086,6 @@ export async function publishVideo(
 
   if (data.title?.trim()) {
     formData.append('title', data.title.trim())
-  }
-  if (data.cover) {
-    formData.append('cover', data.cover)
   }
   if (data.schedule_at) {
     formData.append('schedule_at', data.schedule_at)

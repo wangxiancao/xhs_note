@@ -11,10 +11,9 @@
 另提供一个独立视频发布页：
 
 1. 首页切换到视频发布页
-2. 上传视频并自动截取封面
-3. 可手动替换封面
-4. 填写标题（可选）和文案
-5. 直接调用 xiaohongshu-mcp 发布视频
+2. 上传视频
+3. 填写标题（可选）和文案
+4. 直接调用 xiaohongshu-mcp 发布视频
 
 ## 运行要求
 
@@ -65,7 +64,8 @@ npm run dev
 - 视频发布使用 MCP 协议调用 `xiaohongshu-mcp` 的 `publish_with_video` 工具。
 - 发布前会检查登录状态：`/api/v1/login/status`。
 - 后端会把 `history/{task_id}` 图片复制到项目根目录 `images/publish/`，再映射为容器路径 `/app/images/publish/...` 进行发布。
-- 视频发布会把上传的视频与封面暂存到项目根目录 `images/video_publish/`，再映射为容器路径 `/app/images/video_publish/...`。
+- 视频发布会把上传的视频暂存到项目根目录 `images/video_publish/`，再映射为容器路径 `/app/images/video_publish/...`。
+- 当前视频发布页不提供自定义封面，实际封面以小红书发布结果为准。
 
 ## 配置说明
 

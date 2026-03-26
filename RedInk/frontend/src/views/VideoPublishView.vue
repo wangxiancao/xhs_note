@@ -12,81 +12,49 @@
           class="btn btn-primary"
           type="button"
           @click="handlePublish"
-          :disabled="!canPublish || publishing || extractingCover"
-          :style="{ opacity: !canPublish || publishing || extractingCover ? 0.65 : 1 }"
+          :disabled="!canPublish || publishing"
+          :style="{ opacity: !canPublish || publishing ? 0.65 : 1 }"
         >
           <span
-            v-if="publishing || extractingCover"
+            v-if="publishing"
             class="spinner"
             style="width: 14px; height: 14px; border-width: 2px; margin-right: 8px;"
           ></span>
-          {{ publishing ? '发布中...' : extractingCover ? '截取封面中...' : '一键发布视频' }}
+          {{ publishing ? '发布中...' : '一键发布视频' }}
         </button>
       </div>
     </div>
 
-    <div class="video-grid">
-      <div class="card upload-card">
-        <div class="section-head">
-          <h2>视频素材</h2>
-          <label class="picker-btn">
-            <input type="file" accept="video/*" @change="handleVideoChange" />
-            上传视频
-          </label>
-        </div>
+    <div class="card upload-card">
+      <div class="section-head">
+        <h2>视频素材</h2>
+        <label class="picker-btn">
+          <input type="file" accept="video/*" @change="handleVideoChange" />
+          上传视频
+        </label>
+      </div>
 
-        <div v-if="videoPreviewUrl" class="video-preview">
-          <video :src="videoPreviewUrl" controls playsinline preload="metadata"></video>
-        </div>
-        <div v-else class="empty-state">
-          请选择一个视频文件，封面会默认截取第一帧
-        </div>
+      <div v-if="videoPreviewUrl" class="video-preview">
+        <video :src="videoPreviewUrl" controls playsinline preload="metadata"></video>
+      </div>
+      <div v-else class="empty-state">
+        请选择一个视频文件后再发布
+      </div>
 
-        <div v-if="videoFile" class="meta-list">
-          <div class="meta-row">
-            <span>文件名</span>
-            <strong>{{ videoFile.name }}</strong>
-          </div>
-          <div class="meta-row">
-            <span>文件大小</span>
-            <strong>{{ formatFileSize(videoFile.size) }}</strong>
-          </div>
+      <div v-if="videoFile" class="meta-list">
+        <div class="meta-row">
+          <span>文件名</span>
+          <strong>{{ videoFile.name }}</strong>
+        </div>
+        <div class="meta-row">
+          <span>文件大小</span>
+          <strong>{{ formatFileSize(videoFile.size) }}</strong>
         </div>
       </div>
 
-      <div class="card upload-card">
-        <div class="section-head">
-          <h2>封面预览</h2>
-          <div class="section-actions">
-            <label class="picker-btn secondary">
-              <input type="file" accept="image/*" @change="handleCoverChange" />
-              上传封面
-            </label>
-            <button
-              class="text-btn"
-              type="button"
-              @click="regenerateAutoCover"
-              :disabled="!videoFile || extractingCover"
-            >
-              重新截取
-            </button>
-          </div>
-        </div>
-
-        <div v-if="coverPreviewUrl" class="cover-preview">
-          <img :src="coverPreviewUrl" alt="视频封面预览" />
-          <div class="cover-badge">
-            {{ coverMode === 'manual' ? '手动上传' : '自动截取' }}
-          </div>
-        </div>
-        <div v-else class="empty-state">
-          上传视频后会自动生成封面，你也可以手动替换
-        </div>
-
-        <p class="helper-text">
-          当前会把封面一并保存到本地流程中；若不手动上传，默认使用自动截取结果。
-        </p>
-      </div>
+      <p class="helper-text">
+        当前视频发布链路不支持自定义封面，实际封面以 `xiaohongshu-mcp` / 小红书发布结果为准。
+      </p>
     </div>
 
     <div class="card form-card">
@@ -124,8 +92,8 @@
       </div>
 
       <div class="tips-box">
-        <div>1. 选择视频后会自动截取第一帧作为封面预览。</div>
-        <div>2. 你可以手动上传封面，覆盖自动截取结果。</div>
+        <div>1. 当前页面只上传视频、标题和文案。</div>
+        <div>2. 不再提供封面上传或封面预览，避免与实际发布结果不一致。</div>
         <div>3. 点击“一键发布视频”后，会直接调用 `xiaohongshu-mcp` 的视频发布能力。</div>
       </div>
     </div>
@@ -137,13 +105,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { checkPublishStatus, publishVideo } from '../api'
 
-type CoverMode = 'auto' | 'manual' | 'none'
-
 const router = useRouter()
 
 const publishStatusText = ref('正在检查登录状态...')
 const publishing = ref(false)
-const extractingCover = ref(false)
 
 const title = ref('')
 const content = ref('')
@@ -151,14 +116,9 @@ const content = ref('')
 const videoFile = ref<File | null>(null)
 const videoPreviewUrl = ref('')
 
-const coverFile = ref<File | null>(null)
-const coverPreviewUrl = ref('')
-const coverMode = ref<CoverMode>('none')
-
 const effectiveTitle = computed(() => resolveVideoTitle(title.value, content.value))
 const canPublish = computed(() => {
   return Boolean(videoFile.value)
-    && Boolean(coverFile.value)
     && Boolean(content.value.trim())
     && Boolean(effectiveTitle.value)
     && effectiveTitle.value.length <= 20
@@ -170,7 +130,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   revokeObjectUrl(videoPreviewUrl.value)
-  revokeObjectUrl(coverPreviewUrl.value)
 })
 
 function goHome() {
@@ -198,52 +157,14 @@ async function handleVideoChange(event: Event) {
   if (!file) return
 
   revokeObjectUrl(videoPreviewUrl.value)
-  revokeObjectUrl(coverPreviewUrl.value)
   videoFile.value = file
   videoPreviewUrl.value = URL.createObjectURL(file)
-  coverFile.value = null
-  coverPreviewUrl.value = ''
-  coverMode.value = 'none'
-  await generateCoverFromVideo(file)
 
   target.value = ''
-}
-
-function handleCoverChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (!file) return
-
-  applyCoverFile(file, 'manual')
-  target.value = ''
-}
-
-async function regenerateAutoCover() {
-  if (!videoFile.value) return
-  await generateCoverFromVideo(videoFile.value)
-}
-
-async function generateCoverFromVideo(file: File) {
-  extractingCover.value = true
-  try {
-    const generatedCover = await captureFirstFrame(file)
-    applyCoverFile(generatedCover, 'auto')
-  } catch (error: any) {
-    alert(error.message || '自动截取封面失败，请手动上传封面。')
-  } finally {
-    extractingCover.value = false
-  }
-}
-
-function applyCoverFile(file: File, mode: CoverMode) {
-  revokeObjectUrl(coverPreviewUrl.value)
-  coverFile.value = file
-  coverPreviewUrl.value = URL.createObjectURL(file)
-  coverMode.value = mode
 }
 
 async function handlePublish() {
-  if (!videoFile.value || !coverFile.value || !content.value.trim() || publishing.value) {
+  if (!videoFile.value || !content.value.trim() || publishing.value) {
     return
   }
 
@@ -253,7 +174,6 @@ async function handlePublish() {
       title: title.value.trim() || undefined,
       content: content.value.trim(),
       video: videoFile.value,
-      cover: coverFile.value,
     })
 
     if (result.success) {
@@ -292,66 +212,6 @@ function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
-
-function captureFirstFrame(file: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-    const objectUrl = URL.createObjectURL(file)
-
-    const cleanup = () => {
-      video.pause()
-      video.removeAttribute('src')
-      video.load()
-      URL.revokeObjectURL(objectUrl)
-    }
-
-    video.preload = 'auto'
-    video.muted = true
-    video.playsInline = true
-    video.crossOrigin = 'anonymous'
-
-    video.onloadeddata = () => {
-      try {
-        const canvas = document.createElement('canvas')
-        const width = video.videoWidth || 720
-        const height = video.videoHeight || 1280
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          cleanup()
-          reject(new Error('无法创建封面画布。'))
-          return
-        }
-
-        ctx.drawImage(video, 0, 0, width, height)
-        canvas.toBlob((blob) => {
-          cleanup()
-          if (!blob) {
-            reject(new Error('视频封面生成失败，请手动上传封面。'))
-            return
-          }
-
-          resolve(new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'video'}_cover.png`, {
-            type: 'image/png'
-          }))
-        }, 'image/png')
-      } catch (error) {
-        cleanup()
-        reject(error instanceof Error ? error : new Error('视频封面生成失败'))
-      }
-    }
-
-    video.onerror = () => {
-      cleanup()
-      reject(new Error('视频解析失败，请更换文件后重试。'))
-    }
-
-    video.src = objectUrl
-    video.load()
-  })
-}
 </script>
 
 <style scoped>
@@ -385,16 +245,10 @@ function captureFirstFrame(file: File): Promise<File> {
   flex-wrap: wrap;
 }
 
-.video-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
 .upload-card,
 .form-card {
   padding: 20px;
+  margin-bottom: 20px;
 }
 
 .section-head,
@@ -412,12 +266,6 @@ function captureFirstFrame(file: File): Promise<File> {
   font-size: 18px;
 }
 
-.section-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .picker-btn {
   position: relative;
   display: inline-flex;
@@ -432,28 +280,8 @@ function captureFirstFrame(file: File): Promise<File> {
   font-weight: 600;
 }
 
-.picker-btn.secondary {
-  background: white;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
-}
-
 .picker-btn input {
   display: none;
-}
-
-.text-btn {
-  border: none;
-  background: none;
-  color: var(--primary);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.text-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .video-preview {
@@ -469,34 +297,6 @@ function captureFirstFrame(file: File): Promise<File> {
   height: 100%;
   display: block;
   object-fit: contain;
-}
-
-.cover-preview {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 9 / 16;
-  border-radius: 16px;
-  overflow: hidden;
-  background: #f6f7fb;
-  border: 1px solid var(--border-color);
-}
-
-.cover-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.cover-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: rgba(0, 0, 0, 0.72);
-  color: white;
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
 }
 
 .empty-state {
@@ -618,7 +418,6 @@ function captureFirstFrame(file: File): Promise<File> {
     align-items: flex-start;
   }
 
-  .video-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
