@@ -73,6 +73,7 @@ htmlcov/
 *.tmp
 *.temp
 test_*.py
+!tests/test_*.py
 debug_*.py
 
 # Dev notes

@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
+from uuid import uuid4
 
 import requests
 
@@ -49,8 +50,11 @@ class PublishService:
         self.history_root = self.redink_root / "history"
         self.staged_host_root = self.workspace_root / "images" / "publish"
         self.staged_container_root = "/app/images/publish"
+        self.video_staged_host_root = self.workspace_root / "images" / "video_publish"
+        self.video_staged_container_root = "/app/images/video_publish"
 
         self.staged_host_root.mkdir(parents=True, exist_ok=True)
+        self.video_staged_host_root.mkdir(parents=True, exist_ok=True)
 
     def check_login_status(self) -> Dict[str, Any]:
         """检查 xiaohongshu-mcp 登录状态"""
@@ -149,6 +153,77 @@ class PublishService:
             "tool_result": tool_result,
             "staged_host_paths": staged["host_paths"],
             "staged_container_paths": staged["container_paths"],
+        }
+
+    def publish_video(
+        self,
+        title: str = "",
+        content: str = "",
+        video_filename: str = "",
+        video_bytes: bytes = b"",
+        cover_filename: str = "",
+        cover_bytes: Optional[bytes] = None,
+        tags: Optional[List[str]] = None,
+        schedule_at: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """上传视频并通过 MCP 发布到小红书"""
+        resolved_content = (content or "").strip()
+        if not resolved_content:
+            raise ValueError("参数错误：content 不能为空。")
+
+        resolved_title = self._resolve_video_title(title=title, content=resolved_content)
+        normalized_tags = self._normalize_tags(tags or [])
+        staged = self._stage_video_assets(
+            video_filename=video_filename,
+            video_bytes=video_bytes,
+            cover_filename=cover_filename,
+            cover_bytes=cover_bytes,
+        )
+
+        publish_args: Dict[str, Any] = {
+            "title": resolved_title,
+            "content": resolved_content,
+            "video": staged["video_container_path"],
+        }
+        if normalized_tags:
+            publish_args["tags"] = normalized_tags
+        if schedule_at:
+            publish_args["schedule_at"] = schedule_at
+
+        response_payload = {
+            "success": True,
+            "publish_payload": publish_args,
+            "staged_host_paths": staged["host_paths"],
+            "staged_container_paths": staged["container_paths"],
+            "staged_video_host_path": staged["video_host_path"],
+            "staged_video_container_path": staged["video_container_path"],
+            "staged_cover_host_path": staged["cover_host_path"],
+            "staged_cover_container_path": staged["cover_container_path"],
+            "resolved_title": resolved_title,
+        }
+
+        if dry_run:
+            return {
+                **response_payload,
+                "dry_run": True,
+                "message": "dry_run 模式：已完成视频与封面准备，未实际调用 publish_with_video。",
+            }
+
+        login_status = self.check_login_status()
+        if not login_status.get("is_logged_in"):
+            raise PermissionError("发布失败：xiaohongshu-mcp 未登录，请先扫码登录。")
+
+        tool_result = self._call_mcp_tool("publish_with_video", publish_args)
+        tool_message = self._extract_tool_message(tool_result)
+
+        if tool_result.get("isError"):
+            raise RuntimeError(tool_message or "publish_with_video 返回错误结果。")
+
+        return {
+            **response_payload,
+            "message": tool_message or "视频发布请求已提交。",
+            "tool_result": tool_result,
         }
 
     def _resolve_publish_images(self, task_id: str, record_id: str, image_filenames: List[str]) -> List[Path]:
@@ -344,6 +419,49 @@ class PublishService:
             "container_paths": container_paths,
         }
 
+    def _stage_video_assets(
+        self,
+        video_filename: str,
+        video_bytes: bytes,
+        cover_filename: str = "",
+        cover_bytes: Optional[bytes] = None,
+    ) -> Dict[str, Any]:
+        """保存视频发布素材到共享挂载目录，并返回宿主机路径与容器路径"""
+        if not video_bytes:
+            raise ValueError("参数错误：video 不能为空。")
+
+        staged_dir_name = f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
+        staged_host_dir = self.video_staged_host_root / staged_dir_name
+        staged_host_dir.mkdir(parents=True, exist_ok=True)
+
+        video_suffix = self._normalize_file_suffix(video_filename, default=".mp4")
+        video_host_path = staged_host_dir / f"video{video_suffix}"
+        video_host_path.write_bytes(video_bytes)
+        video_container_path = f"{self.video_staged_container_root}/{staged_dir_name}/video{video_suffix}"
+
+        host_paths: List[str] = [str(video_host_path)]
+        container_paths: List[str] = [video_container_path]
+
+        cover_host_path: Optional[str] = None
+        cover_container_path: Optional[str] = None
+        if cover_bytes:
+            cover_suffix = self._normalize_file_suffix(cover_filename, default=".png")
+            cover_path = staged_host_dir / f"cover{cover_suffix}"
+            cover_path.write_bytes(cover_bytes)
+            cover_host_path = str(cover_path)
+            cover_container_path = f"{self.video_staged_container_root}/{staged_dir_name}/cover{cover_suffix}"
+            host_paths.append(cover_host_path)
+            container_paths.append(cover_container_path)
+
+        return {
+            "host_paths": host_paths,
+            "container_paths": container_paths,
+            "video_host_path": str(video_host_path),
+            "video_container_path": video_container_path,
+            "cover_host_path": cover_host_path,
+            "cover_container_path": cover_container_path,
+        }
+
     @staticmethod
     def _extract_tool_message(tool_result: Dict[str, Any]) -> str:
         """从 MCP tool 返回中提取文本信息"""
@@ -369,6 +487,39 @@ class PublishService:
             seen.add(tag)
             normalized.append(tag)
         return normalized
+
+    @staticmethod
+    def _resolve_video_title(title: str, content: str) -> str:
+        """解析视频标题，若未提供则取正文首行前 20 个字符"""
+        resolved_title = (title or "").strip()
+        if resolved_title:
+            if len(resolved_title) > 20:
+                raise ValueError("参数错误：title 不能超过 20 个字符。")
+            return resolved_title
+
+        first_line = ""
+        for line in content.splitlines():
+            candidate = re.sub(r"\s+", " ", line).strip().lstrip("#").strip()
+            if candidate:
+                first_line = candidate
+                break
+
+        if not first_line:
+            raise ValueError("参数错误：无法从 content 中提取标题，请填写 title。")
+
+        return first_line[:20].strip()
+
+    @staticmethod
+    def _normalize_file_suffix(filename: str, default: str) -> str:
+        """提取安全的文件后缀，缺失时回退到默认值"""
+        suffix = Path(filename or "").suffix.lower().strip()
+        if not suffix:
+            return default
+
+        if not re.fullmatch(r"\.[a-z0-9]{1,10}", suffix):
+            return default
+
+        return suffix
 
     @staticmethod
     def _natural_sort_key(value: str):

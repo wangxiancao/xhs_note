@@ -8,6 +8,14 @@
 4. 结果确认
 5. 通过 xiaohongshu-mcp 发布
 
+另提供一个独立视频发布页：
+
+1. 首页切换到视频发布页
+2. 上传视频并自动截取封面
+3. 可手动替换封面
+4. 填写标题（可选）和文案
+5. 直接调用 xiaohongshu-mcp 发布视频
+
 ## 运行要求
 
 - Python 环境：`/root/soft/anaconda3/envs/videolingo`
@@ -49,12 +57,15 @@ npm run dev
 - `POST /api/generate`
 - `GET /api/publish/status`
 - `POST /api/publish/from-result`
+- `POST /api/publish/video`
 
 ## 发布实现说明
 
 - 发布使用 MCP 协议调用 `xiaohongshu-mcp` 的 `publish_content` 工具。
+- 视频发布使用 MCP 协议调用 `xiaohongshu-mcp` 的 `publish_with_video` 工具。
 - 发布前会检查登录状态：`/api/v1/login/status`。
 - 后端会把 `history/{task_id}` 图片复制到项目根目录 `images/publish/`，再映射为容器路径 `/app/images/publish/...` 进行发布。
+- 视频发布会把上传的视频与封面暂存到项目根目录 `images/video_publish/`，再映射为容器路径 `/app/images/video_publish/...`。
 
 ## 配置说明
 

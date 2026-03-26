@@ -14,7 +14,15 @@
           让传播不再需要门槛，让创作从未如此简单
         </div>
         <h1 class="page-title">灵感一触即发</h1>
-        <p class="page-subtitle">输入主题后，依次完成大纲、文本优化、图片生成并一键发布到小红书</p>
+        <p class="page-subtitle">图文模式走完整创作流；视频模式可直接上传封面、视频与文案后一键发布</p>
+        <div class="entry-switches">
+          <button class="entry-btn entry-btn-active" type="button">
+            图文创作
+          </button>
+          <button class="entry-btn" type="button" @click="goVideoPublish">
+            视频发布
+          </button>
+        </div>
       </div>
 
       <!-- 主题输入组合框 -->
@@ -33,7 +41,7 @@
         © 2026 RedInk-glm · RedInk 本地部署版
       </div>
       <div class="footer-license">
-        主题 → 大纲 → 文本 → 图片 → 发布
+        图文：主题 → 大纲 → 文本 → 图片 → 发布 ｜ 视频：上传素材 → 发布
       </div>
     </div>
 
@@ -72,6 +80,10 @@ const uploadedImageFiles = ref<File[]>([])
  */
 function handleImagesChange(images: File[]) {
   uploadedImageFiles.value = images
+}
+
+function goVideoPublish() {
+  router.push('/video-publish')
 }
 
 /**
@@ -193,6 +205,39 @@ async function handleGenerate() {
   font-size: 16px;
   color: var(--text-sub);
   margin-top: 12px;
+}
+
+.entry-switches {
+  display: inline-flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.entry-btn {
+  border: 1px solid rgba(255, 36, 66, 0.18);
+  background: white;
+  color: var(--text-main);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.entry-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.entry-btn-active {
+  background: rgba(255, 36, 66, 0.1);
+  border-color: rgba(255, 36, 66, 0.25);
+  color: var(--primary);
+  cursor: default;
 }
 
 /* Page Footer */

@@ -1,3 +1,4 @@
+import os
 import logging
 import yaml
 from pathlib import Path
@@ -7,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class Config:
-    DEBUG = True
+    DEBUG = str(os.getenv('REDINK_DEBUG', '')).strip().lower() in {'1', 'true', 'yes', 'on'}
     HOST = '0.0.0.0'
     PORT = 12398
     CORS_ORIGINS = ['http://localhost:5173', 'http://localhost:3000']

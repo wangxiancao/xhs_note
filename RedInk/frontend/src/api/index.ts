@@ -1038,6 +1038,32 @@ export interface PublishFromResultResponse {
   staged_container_paths?: string[]
 }
 
+export interface PublishVideoParams {
+  title?: string
+  content: string
+  video: File
+  cover?: File
+  tags?: string[]
+  schedule_at?: string
+  dry_run?: boolean
+}
+
+export interface PublishVideoResponse {
+  success: boolean
+  message?: string
+  error?: string
+  dry_run?: boolean
+  resolved_title?: string
+  publish_payload?: Record<string, any>
+  tool_result?: Record<string, any>
+  staged_host_paths?: string[]
+  staged_container_paths?: string[]
+  staged_video_host_path?: string
+  staged_video_container_path?: string
+  staged_cover_host_path?: string | null
+  staged_cover_container_path?: string | null
+}
+
 // 检查发布登录状态
 export async function checkPublishStatus(): Promise<PublishStatusResponse> {
   const response = await axios.get<PublishStatusResponse>(`${API_BASE_URL}/publish/status`)
@@ -1049,5 +1075,38 @@ export async function publishFromResult(
   data: PublishFromResultParams
 ): Promise<PublishFromResultResponse> {
   const response = await axios.post<PublishFromResultResponse>(`${API_BASE_URL}/publish/from-result`, data)
+  return response.data
+}
+
+export async function publishVideo(
+  data: PublishVideoParams
+): Promise<PublishVideoResponse> {
+  const formData = new FormData()
+  formData.append('content', data.content)
+  formData.append('video', data.video)
+
+  if (data.title?.trim()) {
+    formData.append('title', data.title.trim())
+  }
+  if (data.cover) {
+    formData.append('cover', data.cover)
+  }
+  if (data.schedule_at) {
+    formData.append('schedule_at', data.schedule_at)
+  }
+  if (typeof data.dry_run === 'boolean') {
+    formData.append('dry_run', String(data.dry_run))
+  }
+  for (const tag of data.tags || []) {
+    if (tag.trim()) {
+      formData.append('tags', tag.trim())
+    }
+  }
+
+  const response = await axios.post<PublishVideoResponse>(`${API_BASE_URL}/publish/video`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
   return response.data
 }

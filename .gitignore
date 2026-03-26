@@ -29,6 +29,7 @@ data/*.png
 data/archive_legacy/
 images/notes/
 images/publish/
+images/video_publish/
 images/archive_legacy/
 scripts/generated_covers/
 
